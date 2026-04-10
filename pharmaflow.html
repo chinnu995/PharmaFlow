@@ -1,0 +1,3912 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PharmaFlow – Medicine Inventory & Alert Dashboard for Small Clinics. Manage stock, track expiry, and reorder medicines easily.">
+  <title>PharmaFlow – Clinic Inventory Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── DESIGN TOKENS ─────────────────────────────────────────────────── */
+    :root {
+      --color-bg:            #f0f7f4;
+      --color-surface:       #ffffff;
+      --color-surface-2:     #f8faf9;
+      --color-primary:       #0d6e4f;
+      --color-primary-hover: #0a5c42;
+      --color-accent:        #10b981;
+      --color-text:          #1a2e25;
+      --color-text-muted:    #4b6358;
+      --color-text-inverse:  #ffffff;
+      --color-border:        rgba(0,0,0,0.08);
+      --color-success:       #16a34a;
+      --color-warning:       #d97706;
+      --color-error:         #dc2626;
+      --color-expired:       #6b7280;
+      --radius-md:           0.5rem;
+      --radius-lg:           0.75rem;
+      --radius-xl:           1rem;
+      --shadow-sm:           0 1px 3px rgba(0,0,0,0.07);
+      --shadow-md:           0 4px 16px rgba(0,0,0,0.10);
+      --shadow-lg:           0 8px 32px rgba(0,0,0,0.13);
+      --transition:          all 0.2s ease;
+      --font:                'Satoshi', sans-serif;
+    }
+    [data-theme="dark"] {
+      --color-bg:        #0f1a15;
+      --color-surface:   #162019;
+      --color-surface-2: #1a2a20;
+      --color-primary:   #34d399;
+      --color-primary-hover: #2cc48a;
+      --color-text:      #d1fae5;
+      --color-text-muted:#6ee7b7;
+      --color-text-inverse: #0f1a15;
+      --color-border:    rgba(255,255,255,0.08);
+      --shadow-sm:       0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md:       0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    /* ── RESET & BASE ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--color-bg);
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      transition: background 0.3s, color 0.3s;
+    }
+    button { font-family: var(--font); cursor: pointer; }
+    input, select, textarea { font-family: var(--font); }
+    a { text-decoration: none; }
+    *:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+    svg { display: inline-block; }
+
+    /* ── CONNECTIVITY BANNER ───────────────────────────────────────────── */
+    #connBanner {
+      text-align: center;
+      padding: 0.35rem 1rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: var(--transition);
+      position: sticky;
+      top: 0;
+      z-index: 200;
+    }
+    #connBanner.online  { background: #d1fae5; color: #065f46; border-bottom: 1px solid #6ee7b7; }
+    #connBanner.offline { background: #fef3c7; color: #92400e; border-bottom: 1px solid #fcd34d; }
+
+    /* ── HEADER / NAV ──────────────────────────────────────────────────── */
+    header {
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      position: sticky;
+      top: 2rem;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 64px;
+      backdrop-filter: blur(12px);
+      background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+      box-shadow: var(--shadow-sm);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      flex-shrink: 0;
+    }
+    .logo svg { width: 28px; height: 28px; }
+    .logo .logo-sub { font-size: 0.7rem; font-weight: 500; color: var(--color-text-muted); letter-spacing: 0.05em; text-transform: uppercase; display: block; line-height: 1; }
+    nav#mainNav {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 0.85rem;
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: var(--radius-md);
+      position: relative;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .nav-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .nav-btn:hover { background: var(--color-surface-2); color: var(--color-primary); }
+    .nav-btn.active { color: var(--color-primary); font-weight: 700; background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+    .nav-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -0.5rem;
+      left: 10%;
+      width: 80%;
+      height: 3px;
+      background: var(--color-primary);
+      border-radius: 3px 3px 0 0;
+    }
+    .nav-badge {
+      background: var(--color-error);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .header-right { display: flex; align-items: center; gap: 0.5rem; }
+    .icon-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      transition: var(--transition);
+    }
+    .icon-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+    .icon-btn svg { width: 20px; height: 20px; }
+
+    /* ── ALERT BANNERS ─────────────────────────────────────────────────── */
+    #alertBannersWrap { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem 2rem 0; }
+    .alert-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 600;
+      animation: slideDown 0.3s ease;
+    }
+    .alert-banner.expired  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .alert-banner.critical { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .alert-banner.expiring { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+    .alert-banner .ban-dismiss { background: transparent; border: none; cursor: pointer; color: inherit; opacity: 0.6; padding: 0.25rem; border-radius: 4px; display: flex; }
+    .alert-banner .ban-dismiss:hover { opacity: 1; }
+    @keyframes slideDown { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* ── MAIN CONTENT ──────────────────────────────────────────────────── */
+    main { flex: 1; padding: 1.5rem 2rem 5rem; max-width: 1600px; width: 100%; margin: 0 auto; }
+    .page { display: none; animation: fadeIn 0.25s ease; }
+    .page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── TYPOGRAPHY HELPERS ────────────────────────────────────────────── */
+    .page-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+    .page-title svg { width: 24px; height: 24px; color: var(--color-primary); }
+    .section-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text); }
+    .section-title svg { width: 18px; height: 18px; color: var(--color-primary); }
+    .text-muted { color: var(--color-text-muted); font-size: 0.875rem; }
+    .text-red { color: var(--color-error); font-weight: 700; }
+    .text-green { color: var(--color-success); }
+    .text-amber { color: var(--color-warning); }
+
+    /* ── KPI CARDS ─────────────────────────────────────────────────────── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-bottom: 2rem; }
+    .kpi-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--color-primary);
+      border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+    }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+    .kpi-card.danger::before { background: var(--color-error); }
+    .kpi-card.warning::before { background: var(--color-warning); }
+    .kpi-card.orange::before { background: #f97316; }
+    .kpi-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .kpi-icon { width: 44px; height: 44px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; }
+    .kpi-icon.blue { background: #dbeafe; color: #1d4ed8; }
+    .kpi-icon.red { background: #fee2e2; color: #dc2626; }
+    .kpi-icon.amber { background: #fef3c7; color: #d97706; }
+    .kpi-icon.orange { background: #fff7ed; color: #ea580c; }
+    .kpi-icon svg { width: 22px; height: 22px; }
+    .kpi-value { font-size: 2.25rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+    .kpi-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+
+    /* ── STATUS BADGES ─────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    .badge svg { width: 11px; height: 11px; }
+    .badge.in-stock   { background: #dcfce7; color: #16a34a; }
+    .badge.low        { background: #fef9c3; color: #ca8a04; }
+    .badge.critical   { background: #fee2e2; color: #dc2626; }
+    .badge.expired    { background: #f3f4f6; color: #6b7280; }
+    .badge.expiring   { background: #fef3c7; color: #b45309; }
+    .badge.cat        { background: var(--color-surface-2); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+    .badge.pending    { background: #fef3c7; color: #92400e; }
+    .badge.sent       { background: #dbeafe; color: #1d4ed8; }
+    .badge.received   { background: #dcfce7; color: #16a34a; }
+
+    /* ── DASHBOARD PANELS ──────────────────────────────────────────────── */
+    .dash-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+    .card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-body { padding: 1.25rem; }
+
+    /* ── CHRONIC MONITOR ───────────────────────────────────────────────── */
+    .chronic-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.875rem; }
+    .chronic-card {
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      cursor: pointer;
+      transition: var(--transition);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .chronic-card:hover { border-color: var(--color-primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .chronic-icon {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
+    }
+    .chronic-icon svg { width: 22px; height: 22px; }
+    .chronic-name { font-weight: 700; font-size: 0.875rem; }
+    .chronic-count { font-size: 0.75rem; color: var(--color-text-muted); }
+    .chronic-status { font-size: 0.75rem; font-weight: 700; }
+    .chronic-status.ok { color: var(--color-success); }
+    .chronic-status.warn { color: var(--color-warning); }
+    .chronic-status.danger { color: var(--color-error); }
+
+    /* ── ALERTS LIST ───────────────────────────────────────────────────── */
+    .alerts-scroll { max-height: 380px; overflow-y: auto; }
+    .alert-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--color-border);
+      transition: background 0.15s;
+    }
+    .alert-row:last-child { border-bottom: none; }
+    .alert-row:hover { background: var(--color-surface-2); }
+    .alert-icon-wrap { flex-shrink: 0; margin-top: 2px; }
+    .alert-icon-wrap svg { width: 18px; height: 18px; }
+    .alert-msg { flex: 1; font-size: 0.85rem; line-height: 1.45; }
+    .alert-time { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 2px; }
+    .alert-dismiss { background: transparent; border: none; color: var(--color-text-muted); padding: 2px; display: flex; border-radius: 4px; flex-shrink: 0; }
+    .alert-dismiss:hover { color: var(--color-error); background: #fee2e2; }
+    .alert-dismiss svg { width: 15px; height: 15px; }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+    .empty-state svg { width: 48px; height: 48px; color: var(--color-text-muted); opacity: 0.5; }
+    .empty-state p { color: var(--color-text-muted); font-size: 0.9rem; }
+
+    /* ── CHART CARD ────────────────────────────────────────────────────── */
+    .chart-wrap { position: relative; height: 250px; }
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .chart-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .chart-card h3 { font-size: 0.9rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-text); }
+    .analytics-kpi { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .a-kpi {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      text-align: center;
+    }
+    .a-kpi-val { font-size: 1.75rem; font-weight: 700; color: var(--color-primary); }
+    .a-kpi-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-top: 0.25rem; }
+
+    /* ── TOOLBAR ───────────────────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .toolbar-left { display: flex; align-items: center; gap: 0.75rem; flex: 1; flex-wrap: wrap; }
+    .toolbar-right { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+    .search-wrap {
+      display: flex;
+      align-items: center;
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 0 0.75rem;
+      gap: 0.5rem;
+      min-width: 240px;
+      max-width: 360px;
+      flex: 1;
+      transition: border-color 0.2s;
+    }
+    .search-wrap:focus-within { border-color: var(--color-primary); }
+    .search-wrap svg { width: 16px; height: 16px; color: var(--color-text-muted); flex-shrink: 0; }
+    .search-wrap input {
+      border: none;
+      background: transparent;
+      padding: 0.55rem 0;
+      flex: 1;
+      color: var(--color-text);
+      font-size: 0.875rem;
+      outline: none;
+    }
+    .search-wrap input::placeholder { color: var(--color-text-muted); }
+    .mic-btn {
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      display: flex;
+      padding: 0.25rem;
+      border-radius: 50%;
+      transition: var(--transition);
+    }
+    .mic-btn:hover { color: var(--color-primary); }
+    .mic-btn.listening { color: var(--color-error); animation: pulse 0.8s ease infinite; }
+    .mic-btn svg { width: 16px; height: 16px; }
+    @keyframes pulse { 0%,100%{transform:scale(1);} 50%{transform:scale(1.2);} }
+    select.filter-sel {
+      padding: 0.55rem 0.75rem;
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-md);
+      color: var(--color-text);
+      font-size: 0.875rem;
+      font-family: var(--font);
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    select.filter-sel:focus { border-color: var(--color-primary); }
+    .shortcut-hint { font-size: 0.75rem; color: var(--color-text-muted); padding: 0.35rem 0; }
+    kbd { background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 0.75rem; font-weight: 700; }
+
+    /* ── BUTTONS ───────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: var(--radius-md);
+      border: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+      font-family: var(--font);
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn svg { width: 15px; height: 15px; }
+    .btn-primary { background: var(--color-primary); color: #fff; }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-outline { background: transparent; border: 1.5px solid var(--color-border); color: var(--color-text); }
+    .btn-outline:hover { background: var(--color-surface-2); border-color: var(--color-text-muted); }
+    .btn-ghost { background: transparent; border: none; color: var(--color-text-muted); padding: 0.4rem; border-radius: var(--radius-md); }
+    .btn-ghost:hover { background: var(--color-surface-2); color: var(--color-text); }
+    .btn-ghost svg { width: 16px; height: 16px; }
+    .btn-danger { background: var(--color-error); color: #fff; }
+    .btn-danger:hover { opacity: 0.88; }
+    .btn-green { background: #16a34a; color: #fff; }
+    .btn-green:hover { background: #15803d; }
+    .btn-whatsapp { background: #25d366; color: #fff; }
+    .btn-whatsapp:hover { background: #20b358; }
+    .btn-sms { background: #3b82f6; color: #fff; }
+    .btn-sms:hover { background: #2563eb; }
+    .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+    .btn-sm svg { width: 13px; height: 13px; }
+    .btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: transparent; border: none; color: var(--color-text-muted); transition: var(--transition); }
+    .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
+    .btn-icon.danger:hover { background: #fee2e2; color: var(--color-error); }
+    .btn-icon svg { width: 16px; height: 16px; }
+
+    /* ── TABLE ─────────────────────────────────────────────────────────── */
+    .table-wrap { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: var(--color-surface-2);
+      color: var(--color-text-muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+    }
+    thead th:hover { color: var(--color-primary); }
+    thead th.sorted-asc::after { content: ' ↑'; }
+    thead th.sorted-desc::after { content: ' ↓'; }
+    tbody td { padding: 0.875rem 1rem; border-bottom: 1px solid var(--color-border); font-size: 0.875rem; vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background 0.15s; }
+    tbody tr:hover { background: var(--color-surface-2); }
+    tbody tr.row-focused { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+    .med-name { font-weight: 700; }
+    .med-sub { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 2px; }
+    .qty-ctrl { display: flex; align-items: center; gap: 0.25rem; }
+    .qty-btn {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: 1.5px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text);
+      font-weight: 700;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+      flex-shrink: 0;
+    }
+    .qty-btn.minus:hover { background: #fee2e2; border-color: #fca5a5; color: var(--color-error); }
+    .qty-btn.plus:hover  { background: #dcfce7; border-color: #86efac; color: var(--color-success); }
+    .qty-inp {
+      width: 44px;
+      text-align: center;
+      border: 1.5px solid var(--color-border);
+      border-radius: 6px;
+      padding: 0.25rem;
+      background: var(--color-surface);
+      color: var(--color-text);
+      font-size: 0.85rem;
+      font-weight: 700;
+      -moz-appearance: textfield;
+    }
+    .qty-inp::-webkit-outer-spin-button,
+    .qty-inp::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .qty-current { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 2px; text-align: center; }
+    .days-left { font-weight: 700; }
+    .days-left.red { color: var(--color-error); }
+    .days-left.green { color: var(--color-success); }
+    .actions-cell { display: flex; align-items: center; gap: 0.25rem; }
+    .inline-confirm { display: none; align-items: center; gap: 0.5rem; font-size: 0.8rem; font-weight: 600; color: var(--color-error); background: #fee2e2; padding: 0.35rem 0.75rem; border-radius: var(--radius-md); }
+    .inline-confirm.show { display: flex; }
+
+    /* ── REORDER GRID ──────────────────────────────────────────────────── */
+    .reorder-top { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+    .reorder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem; }
+    .reorder-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+      transition: var(--transition);
+    }
+    .reorder-card:hover { box-shadow: var(--shadow-md); }
+    .rc-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .rc-name { font-weight: 700; font-size: 1rem; line-height: 1.3; }
+    .rc-cat { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px; }
+    .rc-info { font-size: 0.82rem; display: flex; flex-direction: column; gap: 0.25rem; }
+    .rc-highlight {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      border-radius: var(--radius-md);
+      padding: 0.65rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+    }
+    [data-theme="dark"] .rc-highlight { background: #2a2010; border-color: #6b5010; }
+    .rc-highlight strong { font-size: 1rem; font-weight: 700; color: var(--color-primary); }
+    .rc-actions { display: flex; gap: 0.5rem; }
+    .rc-actions .btn { flex: 1; justify-content: center; }
+
+    /* ── SUPPLIERS ─────────────────────────────────────────────────────── */
+    .supplier-dir { display: flex; flex-direction: column; gap: 1rem; }
+    .supplier-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      box-shadow: var(--shadow-sm);
+    }
+    .sup-info { flex: 1; }
+    .sup-name { font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem; }
+    .sup-contacts { font-size: 0.82rem; color: var(--color-text-muted); }
+    .sup-meds { font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.5rem; }
+    .sup-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+    .quick-links { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+    .quick-link-card {
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      cursor: pointer;
+      text-decoration: none;
+      color: var(--color-text);
+      font-weight: 600;
+      transition: var(--transition);
+      box-shadow: var(--shadow-sm);
+    }
+    .quick-link-card:hover { border-color: var(--color-primary); color: var(--color-primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .quick-link-card svg { width: 22px; height: 22px; }
+    .location-bar { display: flex; gap: 0.75rem; margin-bottom: 2rem; align-items: center; flex-wrap: wrap; }
+    .city-input {
+      padding: 0.6rem 1rem;
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+      font-family: var(--font);
+      font-size: 0.875rem;
+      outline: none;
+      min-width: 200px;
+    }
+    .city-input:focus { border-color: var(--color-primary); }
+
+    /* ── MODAL ─────────────────────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .modal-backdrop.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--color-surface);
+      border-radius: var(--radius-xl);
+      width: 100%;
+      max-width: 620px;
+      max-height: 92vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      transform: scale(0.93) translateY(20px);
+      transition: transform 0.25s ease, opacity 0.25s;
+      opacity: 0;
+    }
+    .modal-backdrop.open .modal { transform: scale(1) translateY(0); opacity: 1; }
+    .modal-sm { max-width: 400px; }
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: var(--color-surface);
+      z-index: 1;
+    }
+    .modal-header h2 { font-size: 1.1rem; font-weight: 700; }
+    .modal-body { padding: 1.5rem; }
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      position: sticky;
+      bottom: 0;
+      background: var(--color-surface);
+    }
+    .modal-section { margin-bottom: 1.5rem; }
+    .modal-section:last-child { margin-bottom: 0; }
+    .modal-section-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-muted);
+      margin-bottom: 0.875rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-full { grid-column: span 2; }
+    .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+    .form-group label { font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      padding: 0.6rem 0.875rem;
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface-2);
+      color: var(--color-text);
+      font-family: var(--font);
+      font-size: 0.875rem;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: var(--color-primary); background: var(--color-surface); }
+    .form-group input.invalid { border-color: var(--color-error); background: #fff5f5; }
+    .form-err { font-size: 0.75rem; color: var(--color-error); display: none; }
+    .form-err.show { display: block; }
+    .form-hint { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.25rem; }
+    .toggle-row { display: flex; align-items: center; gap: 0.875rem; }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #d1d5db;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--color-primary); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+    .toggle-label { font-size: 0.875rem; font-weight: 600; cursor: pointer; }
+    .barcode-row { display: flex; gap: 0.5rem; }
+    .barcode-row input { flex: 1; }
+
+    /* ── CAMERA OVERLAY ────────────────────────────────────────────────── */
+    .camera-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      display: none;
+    }
+    .camera-overlay.active { display: flex; }
+    .camera-overlay video { width: 100%; max-width: 500px; border-radius: var(--radius-lg); }
+    .camera-overlay p { color: #fff; font-size: 0.875rem; }
+    .camera-close { position: absolute; top: 1.5rem; right: 1.5rem; }
+
+    /* ── VOICE TRANSCRIPT ──────────────────────────────────────────────── */
+    #voiceTranscript { font-size: 0.82rem; color: var(--color-text-muted); font-style: italic; min-height: 1.2em; margin-top: 0.35rem; padding-left: 0.25rem; }
+
+    /* ── TOASTS ────────────────────────────────────────────────────────── */
+    #toastContainer {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      padding: 0.875rem 1.25rem;
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      min-width: 260px;
+      max-width: 380px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      animation: toastIn 0.3s ease;
+      pointer-events: all;
+      border-left: 4px solid var(--color-primary);
+      border: 1px solid var(--color-border);
+      border-left: 4px solid;
+    }
+    .toast.success { border-left-color: var(--color-success); }
+    .toast.error   { border-left-color: var(--color-error); }
+    .toast.info    { border-left-color: #3b82f6; }
+    .toast .toast-icon { flex-shrink: 0; font-size: 1.1rem; }
+    .toast .toast-msg { flex: 1; color: var(--color-text); }
+    .toast .toast-close { background: transparent; border: none; cursor: pointer; color: var(--color-text-muted); padding: 0; display: flex; flex-shrink: 0; }
+    .toast .toast-close svg { width: 14px; height: 14px; }
+    @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes toastOut { to { transform: translateX(110%); opacity: 0; } }
+
+    /* ── SKELETON ──────────────────────────────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--color-surface-2) 25%, color-mix(in srgb, var(--color-border) 60%, transparent) 50%, var(--color-surface-2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: var(--radius-md);
+    }
+    @keyframes shimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
+    .skel-row { height: 56px; margin-bottom: 0.5rem; }
+    .skel-card { height: 180px; border-radius: var(--radius-lg); }
+    .skel-kpi { height: 110px; border-radius: var(--radius-lg); }
+
+    /* ── KEYBOARD SHORTCUT BAR ─────────────────────────────────────────── */
+    #shortcutBar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.25rem;
+      padding: 0.5rem 2rem;
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+    #shortcutBar span { white-space: nowrap; }
+    #shortcutBar .sc-dismiss { margin-left: auto; cursor: pointer; display: flex; }
+
+    /* ── MOBILE BOTTOM NAV ─────────────────────────────────────────────── */
+    #mobileNav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      z-index: 80;
+      padding: 0.5rem 0.25rem;
+      padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    }
+    #mobileNav ul { list-style: none; display: flex; justify-content: space-around; }
+    #mobileNav li { flex: 1; }
+    .mob-nav-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.4rem;
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: 0.65rem;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      border-radius: var(--radius-md);
+      width: 100%;
+      transition: var(--transition);
+      position: relative;
+    }
+    .mob-nav-btn svg { width: 22px; height: 22px; }
+    .mob-nav-btn.active { color: var(--color-primary); }
+    .mob-nav-btn .mob-badge { position: absolute; top: 2px; right: calc(50% - 16px); }
+
+    /* ── PRINT CSS ─────────────────────────────────────────────────────── */
+    @media print {
+      header, #shortcutBar, #mobileNav, #toastContainer, .toolbar .btn-primary,
+      .rc-actions, .modal-backdrop, #alertBannersWrap, #connBanner,
+      .btn-icon, .mic-btn, .nav-badge { display: none !important; }
+      body { background: #fff; color: #000; }
+      .reorder-card { break-inside: avoid; border: 1px solid #ccc; }
+      main { padding: 0; }
+      .page { display: block !important; }
+      .page:not(#reorder) { display: none !important; }
+      #reorder::before { content: 'PharmaFlow – Reorder List  |  Printed: ' attr(data-print-date); display: block; font-size: 0.9rem; margin-bottom: 1rem; }
+    }
+
+    /* ── RESPONSIVE ────────────────────────────────────────────────────── */
+    @media (max-width: 1200px) {
+      .chronic-grid { grid-template-columns: repeat(3, 1fr); }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .chart-grid { grid-template-columns: 1fr; }
+      .analytics-kpi { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 900px) {
+      .dash-grid { grid-template-columns: 1fr; }
+      .chronic-grid { grid-template-columns: repeat(3, 1fr); }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-full { grid-column: span 1; }
+    }
+    @media (max-width: 768px) {
+      header { padding: 0 1rem; }
+      nav#mainNav { display: none; }
+      #mobileNav { display: block; }
+      #shortcutBar { display: none; }
+      main { padding: 1rem 1rem 5rem; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 0.875rem; }
+      .table-wrap { overflow-x: auto; }
+      .chronic-grid { grid-template-columns: repeat(2, 1fr); }
+      .reorder-grid { grid-template-columns: 1fr; }
+      .analytics-kpi { grid-template-columns: repeat(2, 1fr); }
+      .chart-grid { grid-template-columns: 1fr; }
+      #alertBannersWrap { padding: 0.75rem 1rem 0; }
+      .toolbar { gap: 0.5rem; }
+      .toolbar-right { width: 100%; justify-content: flex-end; }
+      .search-wrap { min-width: 100%; max-width: 100%; }
+      .supplier-card { flex-direction: column; }
+      .reorder-top { flex-wrap: wrap; }
+      .quick-links { flex-direction: column; }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .chronic-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── PATIENT TRACKING STYLES ───────────────────────────────────────── */
+    .patient-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem; }
+    .patient-card {
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+      transition: var(--transition);
+      cursor: pointer;
+      position: relative;
+    }
+    .patient-card:hover { border-color: var(--color-primary); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .patient-card .pat-avatar {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+      color: var(--color-primary);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .patient-card .pat-header { display: flex; gap: 0.875rem; align-items: center; }
+    .patient-card .pat-name { font-size: 1rem; font-weight: 700; }
+    .patient-card .pat-sub { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px; }
+    .patient-card .pat-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .pat-tag { font-size: 0.68rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pat-tag.diabetes    { background:#dbeafe; color:#1d4ed8; }
+    .pat-tag.hypertension{ background:#f3e8ff; color:#7e22ce; }
+    .pat-tag.asthma      { background:#d1fae5; color:#065f46; }
+    .pat-tag.cardiac     { background:#fee2e2; color:#991b1b; }
+    .pat-tag.arthritis   { background:#fef3c7; color:#92400e; }
+    .pat-tag.general     { background:#f3f4f6; color:#374151; }
+    .patient-card .pat-stats { display: flex; gap: 1rem; font-size: 0.8rem; color: var(--color-text-muted); }
+    .patient-card .pat-actions { display: flex; gap: 0.5rem; margin-top: auto; }
+    .patient-card .pat-actions .btn { flex: 1; justify-content: center; }
+    .pat-visit-badge {
+      position: absolute; top: 1rem; right: 1rem;
+      font-size: 0.68rem; font-weight: 700;
+      padding: 0.2rem 0.5rem; border-radius: 9999px;
+      background: var(--color-surface-2);
+      color: var(--color-text-muted);
+      border: 1px solid var(--color-border);
+    }
+    /* History panel slide-in */
+    .history-panel {
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin-top: 1.5rem;
+      animation: fadeIn 0.25s ease;
+    }
+    .history-panel table td, .history-panel table th { font-size: 0.82rem; }
+    .dispense-patient-row {
+      display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem;
+      background: var(--color-surface-2);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8rem;
+    }
+    .dispense-patient-row select {
+      flex: 1; border: none; background: transparent;
+      color: var(--color-text); font-family: var(--font); font-size: 0.8rem; outline: none;
+    }
+    /* Patient stats bar on dashboard */
+    .patient-stat-bar {
+      display: flex; gap: 1.5rem; flex-wrap: wrap;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .pstat { text-align: center; }
+    .pstat-val { font-size: 1.75rem; font-weight: 700; color: var(--color-primary); font-variant-numeric: tabular-nums; }
+    .pstat-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-top: 2px; }
+    .pstat-divider { width: 1px; background: var(--color-border); align-self: stretch; }
+    @media (max-width: 768px) {
+      .patient-grid { grid-template-columns: 1fr; }
+      .pat-stats { flex-wrap: wrap; }
+    }
+
+    /* ── MEDICINE CATEGORY NAV BAR ───────────────────────────────────────── */
+    .med-cat-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding: 0.625rem 0 0.75rem;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 1rem;
+    }
+    .med-cat-nav::-webkit-scrollbar { display: none; }
+    .cat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.875rem;
+      border-radius: 9999px;
+      border: 1.5px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font);
+    }
+    .cat-pill:hover { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+    .cat-pill.active { border-color: var(--color-primary); color: var(--color-text-inverse); background: var(--color-primary); }
+    .cat-pill .cat-count {
+      font-size: 0.68rem; font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.25);
+    }
+    .cat-pill:not(.active) .cat-count { background: var(--color-surface-2); color: var(--color-text-muted); }
+
+    /* ── SUPPLIER MANAGEMENT ─────────────────────────────────────────────── */
+    .supplier-mgmt-card {
+      background: var(--color-surface);
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition);
+    }
+    .supplier-mgmt-card:hover { box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--color-primary) 40%, transparent); }
+    .sup-mgmt-left { flex: 1; min-width: 0; }
+    .sup-mgmt-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .sup-mgmt-contact { font-size: 0.8rem; color: var(--color-text-muted); display: flex; flex-wrap:wrap; gap:0.75rem; margin-bottom: 0.5rem; }
+    .sup-mgmt-contact span { display:flex; align-items:center; gap:0.3rem; }
+    .sup-mgmt-meta { font-size: 0.75rem; color: var(--color-text-muted); margin-bottom:0.5rem; }
+    .sup-mgmt-tags { display: flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem; }
+    .sup-med-tag { font-size:0.7rem; padding:0.15rem 0.5rem; border-radius:9999px; background:var(--color-surface-2); border:1px solid var(--color-border); color:var(--color-text-muted); font-weight:600; }
+    .sup-mgmt-right { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-end; flex-shrink:0; }
+    .sup-rating { font-size:0.75rem; color:var(--color-warning); font-weight:700; }
+    .supplier-grid { display: flex; flex-direction: column; gap: 1rem; }
+    .sup-type-badge { font-size:0.68rem; font-weight:700; padding:0.2rem 0.55rem; border-radius:9999px; text-transform:uppercase; letter-spacing:0.04em; }
+    .sup-type-badge.wholesale { background:#dbeafe; color:#1d4ed8; }
+    .sup-type-badge.distributor { background:#f3e8ff; color:#7e22ce; }
+    .sup-type-badge.manufacturer { background:#d1fae5; color:#065f46; }
+    .sup-type-badge.retail { background:#fef3c7; color:#92400e; }
+  </style>
+</head>
+<body>
+
+<!-- ── CONNECTIVITY BANNER ──────────────────────────────────────────────── -->
+<div id="connBanner" class="online" role="status" aria-live="polite">
+  🟢 Live — synced with database
+</div>
+
+<!-- ── DESKTOP HEADER ───────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <i data-lucide="activity"></i>
+    <div>
+      PharmaFlow
+      <span class="logo-sub">Clinic Inventory</span>
+    </div>
+  </div>
+
+  <nav id="mainNav" aria-label="Main navigation">
+    <button class="nav-btn active" data-page="dashboard" aria-label="Dashboard">
+      <i data-lucide="layout-dashboard"></i> Dashboard
+    </button>
+    <button class="nav-btn" data-page="inventory" aria-label="Inventory">
+      <i data-lucide="package"></i> Inventory
+      <span class="nav-badge" id="invBadge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" data-page="reorder" aria-label="Reorder">
+      <i data-lucide="refresh-cw"></i> Reorder
+      <span class="nav-badge" id="reorderBadge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" data-page="analytics" aria-label="Analytics">
+      <i data-lucide="bar-chart-2"></i> Analytics
+    </button>
+    <button class="nav-btn" data-page="patients" aria-label="Patients">
+      <i data-lucide="users"></i> Patients
+      <span class="nav-badge" id="patientsBadge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" data-page="suppliers" aria-label="Suppliers">
+      <i data-lucide="truck"></i> Suppliers
+    </button>
+  </nav>
+
+  <div class="header-right">
+    <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode">
+      <i data-lucide="moon"></i>
+    </button>
+  </div>
+</header>
+
+<!-- ── ALERT BANNERS ────────────────────────────────────────────────────── -->
+<div id="alertBannersWrap" role="alert" aria-live="polite"></div>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- ═══════ PAGE 1: DASHBOARD ═══════ -->
+  <section id="dashboard" class="page active" aria-label="Dashboard">
+    <h1 class="page-title"><i data-lucide="layout-dashboard"></i> Overview</h1>
+
+    <!-- KPI Grid -->
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <div><div class="kpi-label">Total Medicines</div><div class="kpi-value" id="kpiTotal">–</div></div>
+          <div class="kpi-icon blue"><i data-lucide="package"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card danger">
+        <div class="kpi-top">
+          <div><div class="kpi-label">Critical / Expired</div><div class="kpi-value" id="kpiCritical">–</div></div>
+          <div class="kpi-icon red"><i data-lucide="alert-triangle"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card warning">
+        <div class="kpi-top">
+          <div><div class="kpi-label">Low Stock</div><div class="kpi-value" id="kpiLow">–</div></div>
+          <div class="kpi-icon amber"><i data-lucide="alert-circle"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card orange">
+        <div class="kpi-top">
+          <div><div class="kpi-label">Expiring This Month</div><div class="kpi-value" id="kpiExpiring">–</div></div>
+          <div class="kpi-icon orange"><i data-lucide="clock"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patient Stats Bar -->
+    <div class="patient-stat-bar" id="patientStatBar">
+      <div class="pstat"><div class="pstat-val" id="pstatTotal">–</div><div class="pstat-label">Total Patients</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="pstatToday">–</div><div class="pstat-label">Served Today</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="pstatMonth">–</div><div class="pstat-label">This Month</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="pstatChronic">–</div><div class="pstat-label">Chronic Patients</div></div>
+      <div style="margin-left:auto;display:flex;align-items:center;">
+        <button class="btn btn-primary btn-sm" onclick="navigateTo('patients')">
+          <i data-lucide="users"></i> Manage Patients
+        </button>
+      </div>
+    </div>
+
+    <!-- Chronic Disease Monitor -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <span class="section-title" style="margin:0"><i data-lucide="heart-pulse"></i> Chronic Disease Stock Monitor</span>
+      </div>
+      <div class="card-body">
+        <div class="chronic-grid" id="chronicGrid"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard main panels -->
+    <div class="dash-grid">
+      <!-- Left: Alerts + Donut -->
+      <div style="display:flex;flex-direction:column;gap:1.5rem;">
+        <div class="card">
+          <div class="card-header">
+            <span class="section-title" style="margin:0"><i data-lucide="bell"></i> Recent Alerts</span>
+          </div>
+          <div class="alerts-scroll" id="alertsList" aria-live="polite"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="section-title" style="margin:0"><i data-lucide="pie-chart"></i> Stock Status</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap"><canvas id="donutChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: empty state placeholder if needed -->
+      <div style="display:flex;flex-direction:column;gap:1.5rem;">
+        <div class="card">
+          <div class="card-header">
+            <span class="section-title" style="margin:0"><i data-lucide="zap"></i> Quick Actions</span>
+          </div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:0.75rem;">
+            <button class="btn btn-primary" onclick="openAddMedModal()" style="width:100%;justify-content:center;">
+              <i data-lucide="plus"></i> Add New Medicine
+            </button>
+            <button class="btn btn-outline" onclick="navigateTo('patients');openAddPatientModal()" style="width:100%;justify-content:center;">
+              <i data-lucide="user-plus"></i> Register Patient
+            </button>
+            <button class="btn btn-outline" onclick="navigateTo('reorder')" style="width:100%;justify-content:center;">
+              <i data-lucide="refresh-cw"></i> View Reorder List
+            </button>
+            <button class="btn btn-outline" onclick="navigateTo('analytics')" style="width:100%;justify-content:center;">
+              <i data-lucide="bar-chart-2"></i> View Analytics
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="section-title" style="margin:0"><i data-lucide="info"></i> System Info</span>
+          </div>
+          <div class="card-body text-muted" style="font-size:0.82rem;line-height:1.7;" id="systemInfo">
+            Loading...
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ PAGE 2: INVENTORY ═══════ -->
+  <section id="inventory" class="page" aria-label="Inventory">
+    <h1 class="page-title"><i data-lucide="package"></i> Medicine Inventory</h1>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="search-wrap">
+          <i data-lucide="search"></i>
+          <input id="searchInput" type="text" placeholder="Search medicines... [/]" aria-label="Search medicines">
+          <button class="mic-btn" id="micBtn" aria-label="Voice search">
+            <i data-lucide="mic"></i>
+          </button>
+        </div>
+        <select class="filter-sel" id="catFilter" aria-label="Filter by category" onchange="renderInventoryTable()">
+          <option value="">All Categories</option>
+          <option>Painkiller</option><option>Antibiotic</option><option>Antidiabetic</option>
+          <option>Antihypertensive</option><option>Cardiac</option><option>Respiratory</option>
+          <option>Vitamin</option><option>Other</option>
+        </select>
+        <select class="filter-sel" id="statusFilter" aria-label="Filter by status" onchange="renderInventoryTable()">
+          <option value="">All Statuses</option>
+          <option>In Stock</option><option>Low</option><option>Critical</option>
+          <option>Expiring Soon</option><option>Expired</option>
+        </select>
+        <select class="filter-sel" id="diseaseFilter" aria-label="Filter by disease" onchange="renderInventoryTable()">
+          <option value="">All Diseases</option>
+          <option>Diabetes</option><option>Hypertension</option><option>Asthma</option>
+          <option>Cardiac</option><option>Arthritis</option>
+        </select>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-primary" id="addMedBtn" aria-label="Add medicine (A)">
+          <i data-lucide="plus"></i> Add Medicine <kbd>A</kbd>
+        </button>
+      </div>
+    </div>
+
+    <!-- Medicine Category Nav Bar -->
+    <div class="med-cat-nav" id="medCatNav" role="navigation" aria-label="Filter by category"></div>
+
+    <div class="shortcut-hint">Shortcuts: <kbd>A</kbd> Add · <kbd>/</kbd> Search · <kbd>R</kbd> Reorder · <kbd>Esc</kbd> Close</div>
+    <div id="voiceTranscript"></div>
+
+    <div class="table-wrap" style="margin-top:0.5rem;">
+      <table id="inventoryTable" aria-label="Medicine inventory">
+        <thead>
+          <tr>
+            <th data-sort="name" onclick="sortBy('name')">Medicine Name</th>
+            <th data-sort="category" onclick="sortBy('category')">Category</th>
+            <th data-sort="quantity" onclick="sortBy('quantity')">Qty / Dispense</th>
+            <th data-sort="status_label" onclick="sortBy('status_label')">Status</th>
+            <th data-sort="expiry_date" onclick="sortBy('expiry_date')">Expiry</th>
+            <th>Supplier</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="inventoryBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════ PAGE 3: REORDER ═══════ -->
+  <section id="reorder" class="page" aria-label="Reorder list" data-print-date="">
+    <h1 class="page-title"><i data-lucide="refresh-cw"></i> Reorder List</h1>
+
+    <div class="reorder-top">
+      <button class="btn btn-whatsapp" id="sendAllWABtn" aria-label="Send all reorders via WhatsApp">
+        <i data-lucide="message-circle"></i> Send All via WhatsApp
+      </button>
+      <button class="btn btn-sms" id="sendAllSMSBtn" aria-label="Send all reorders via SMS">
+        <i data-lucide="smartphone"></i> Send All SMS
+      </button>
+      <button class="btn btn-outline" onclick="downloadCSV()" aria-label="Download CSV">
+        <i data-lucide="download"></i> Download CSV
+      </button>
+      <button class="btn btn-outline" onclick="window.print()" aria-label="Print reorder list">
+        <i data-lucide="printer"></i> Print
+      </button>
+    </div>
+
+    <div class="reorder-grid" id="reorderGrid"></div>
+  </section>
+
+  <!-- ═══════ PAGE 4: ANALYTICS ═══════ -->
+  <section id="analytics" class="page" aria-label="Analytics">
+    <h1 class="page-title"><i data-lucide="bar-chart-2"></i> Analytics Dashboard</h1>
+
+    <div class="analytics-kpi" id="analyticsKPIs">
+      <div class="a-kpi"><div class="a-kpi-val" id="aKpi1">–</div><div class="a-kpi-label">Added This Month</div></div>
+      <div class="a-kpi"><div class="a-kpi-val" id="aKpi2">–</div><div class="a-kpi-label">Dispensed This Month</div></div>
+      <div class="a-kpi"><div class="a-kpi-val" id="aKpi3" style="font-size:1.1rem;line-height:1.3">–</div><div class="a-kpi-label">Most Dispensed</div></div>
+      <div class="a-kpi"><div class="a-kpi-val" id="aKpi4">–</div><div class="a-kpi-label">Running Out (&lt;7 days)</div></div>
+    </div>
+
+    <div class="chart-grid" id="analyticsCharts">
+      <div class="chart-card">
+        <h3>Stock Levels per Category</h3>
+        <div class="chart-wrap"><canvas id="catChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Stock Movements (Last 30 Days)</h3>
+        <div class="chart-wrap"><canvas id="movChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Medicine Category Distribution</h3>
+        <div class="chart-wrap"><canvas id="catDistChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Top 10 Most Dispensed</h3>
+        <div class="chart-wrap"><canvas id="topDispChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ PAGE 5: SUPPLIERS ═══════ -->
+  <section id="suppliers" class="page" aria-label="Suppliers">
+    <h1 class="page-title"><i data-lucide="truck"></i> Supplier Management</h1>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="search-wrap">
+          <i data-lucide="search"></i>
+          <input id="supSearchInput" type="text" placeholder="Search suppliers…" aria-label="Search suppliers">
+        </div>
+        <select class="filter-sel" id="supTypeFilter" aria-label="Filter by type" onchange="renderSuppliers()">
+          <option value="">All Types</option>
+          <option>Wholesale</option>
+          <option>Distributor</option>
+          <option>Manufacturer</option>
+          <option>Retail</option>
+        </select>
+        <select class="filter-sel" id="supStatusFilter" aria-label="Filter by status" onchange="renderSuppliers()">
+          <option value="">All Status</option>
+          <option>Active</option>
+          <option>Inactive</option>
+        </select>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-outline" id="findNearMeBtn" aria-label="Find suppliers near me using GPS">
+          <i data-lucide="map-pin"></i> Near Me
+        </button>
+        <button class="btn btn-primary" id="addSupplierBtn" aria-label="Add new supplier">
+          <i data-lucide="plus"></i> Add Supplier
+        </button>
+      </div>
+    </div>
+
+    <!-- Supplier Stats -->
+    <div class="patient-stat-bar" style="margin-top:0.5rem;">
+      <div class="pstat"><div class="pstat-val" id="supStatTotal">–</div><div class="pstat-label">Total Suppliers</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="supStatActive">–</div><div class="pstat-label">Active</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="supStatMeds">–</div><div class="pstat-label">Medicines Supplied</div></div>
+      <div style="margin-left:auto;display:flex;gap:0.75rem;align-items:center;">
+        <a href="https://pharmeasy.in" target="_blank" rel="noopener" class="btn btn-outline btn-sm">PharmEasy B2B ↗</a>
+        <a href="https://medlineind.com" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Medline ↗</a>
+      </div>
+    </div>
+
+    <!-- Supplier cards -->
+    <div class="supplier-grid" id="supplierGrid" style="margin-top:1rem;"></div>
+
+    <!-- Location finder (collapsible) -->
+    <div style="margin-top:1.5rem;">
+      <div class="section-title"><i data-lucide="map-pin"></i> Find Suppliers Near You</div>
+      <div class="location-bar">
+        <input type="text" id="cityInput" class="city-input" placeholder="Enter city name…" aria-label="City name for supplier search">
+        <button class="btn btn-outline" id="citySearchBtn" aria-label="Search suppliers in city">
+          <i data-lucide="search"></i> Search City
+        </button>
+      </div>
+      <div id="locationResult" style="margin-top:0.75rem;font-size:0.85rem;color:var(--color-text-muted);"></div>
+    </div>
+  </section>
+
+  <!-- ═══════ PAGE 6: PATIENTS ═══════ -->
+  <section id="patients" class="page" aria-label="Patient Tracking">
+    <h1 class="page-title"><i data-lucide="users"></i> Patient Tracking</h1>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="search-wrap">
+          <i data-lucide="search"></i>
+          <input id="patSearchInput" type="text" placeholder="Search patients by name or phone…" aria-label="Search patients">
+        </div>
+        <select class="filter-sel" id="patConditionFilter" aria-label="Filter by condition" onchange="renderPatientsPage()">
+          <option value="">All Conditions</option>
+          <option>Diabetes</option><option>Hypertension</option><option>Asthma</option>
+          <option>Cardiac</option><option>Arthritis</option><option>General</option>
+        </select>
+        <select class="filter-sel" id="patGenderFilter" aria-label="Filter by gender" onchange="renderPatientsPage()">
+          <option value="">All Genders</option>
+          <option>Male</option><option>Female</option><option>Other</option>
+        </select>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-outline" id="exportPatientsBtn" aria-label="Export patients CSV">
+          <i data-lucide="download"></i> Export CSV
+        </button>
+        <button class="btn btn-primary" id="addPatientBtn" aria-label="Add new patient">
+          <i data-lucide="user-plus"></i> Add Patient
+        </button>
+      </div>
+    </div>
+
+    <!-- Patient Summary Bar -->
+    <div class="patient-stat-bar" style="margin-top:0.5rem;">
+      <div class="pstat"><div class="pstat-val" id="filteredPatCount">–</div><div class="pstat-label">Showing</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="dispThisMonth">–</div><div class="pstat-label">Dispensed This Month</div></div>
+      <div class="pstat-divider"></div>
+      <div class="pstat"><div class="pstat-val" id="avgDispPerPatient">–</div><div class="pstat-label">Avg Dispensed / Patient</div></div>
+    </div>
+
+    <!-- History panel placeholder -->
+    <div id="patHistoryPanel" style="display:none;"></div>
+
+    <!-- Patient Cards -->
+    <div class="patient-grid" id="patientGrid" style="margin-top:1rem;"></div>
+  </section>
+
+</main>
+
+<!-- ── KEYBOARD SHORTCUT BAR ────────────────────────────────────────────── -->
+<div id="shortcutBar" role="complementary" aria-label="Keyboard shortcuts">
+  <span>⌨ Shortcuts:</span>
+  <span><kbd>D</kbd> Dashboard</span>
+  <span><kbd>I</kbd> Inventory</span>
+  <span><kbd>R</kbd> Reorder</span>
+  <span><kbd>N</kbd> Analytics</span>
+  <span><kbd>A</kbd> Add Medicine</span>
+  <span><kbd>/</kbd> Search</span>
+  <span><kbd>Esc</kbd> Close</span>
+  <button class="btn-ghost sc-dismiss" onclick="document.getElementById('shortcutBar').style.display='none'" aria-label="Dismiss shortcut bar">
+    <i data-lucide="x"></i>
+  </button>
+</div>
+
+<!-- ── MOBILE BOTTOM NAV ─────────────────────────────────────────────────── -->
+<nav id="mobileNav" aria-label="Mobile navigation">
+  <ul role="list">
+    <li><button class="mob-nav-btn active" data-page="dashboard" aria-label="Dashboard">
+      <i data-lucide="layout-dashboard"></i> Dash
+    </button></li>
+    <li><button class="mob-nav-btn" data-page="inventory" aria-label="Inventory">
+      <i data-lucide="package"></i> Inventory
+      <span class="nav-badge mob-badge" id="mobInvBadge" style="display:none">0</span>
+    </button></li>
+    <li><button class="mob-nav-btn" data-page="reorder" aria-label="Reorder">
+      <i data-lucide="refresh-cw"></i> Reorder
+      <span class="nav-badge mob-badge" id="mobReorderBadge" style="display:none">0</span>
+    </button></li>
+    <li><button class="mob-nav-btn" data-page="analytics" aria-label="Analytics">
+      <i data-lucide="bar-chart-2"></i> Stats
+    </button></li>
+    <li><button class="mob-nav-btn" data-page="patients" aria-label="Patients">
+      <i data-lucide="users"></i> Patients
+    </button></li>
+    <li><button class="mob-nav-btn" data-page="suppliers" aria-label="Suppliers">
+      <i data-lucide="truck"></i> Suppliers
+    </button></li>
+  </ul>
+</nav>
+
+<!-- ── MODALS ────────────────────────────────────────────────────────────── -->
+
+<!-- Add/Edit Medicine -->
+<div class="modal-backdrop" id="medModalBd" role="dialog" aria-modal="true" aria-labelledby="medModalTitle">
+  <div class="modal" id="medModal">
+    <div class="modal-header">
+      <h2 id="medModalTitle">Add Medicine</h2>
+      <button class="btn-ghost" onclick="closeModal('medModalBd')" aria-label="Close modal"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="medForm" novalidate>
+        <input type="hidden" id="fMedId">
+
+        <!-- Section 1 -->
+        <div class="modal-section">
+          <div class="modal-section-title">Medicine Details</div>
+          <div class="form-grid">
+            <div class="form-group form-full">
+              <label for="fName">Medicine Name *</label>
+              <input type="text" id="fName" required autocomplete="off" placeholder="e.g. Paracetamol 500mg">
+              <span class="form-err" id="fNameErr">Medicine name is required</span>
+            </div>
+            <div class="form-group">
+              <label for="fCategory">Category *</label>
+              <select id="fCategory" required>
+                <option value="">Select category…</option>
+                <option>Painkiller</option><option>Antibiotic</option><option>Antidiabetic</option>
+                <option>Antihypertensive</option><option>Cardiac</option><option>Respiratory</option>
+                <option>Vitamin</option><option>Other</option>
+              </select>
+              <span class="form-err" id="fCategoryErr">Category is required</span>
+            </div>
+            <div class="form-group">
+              <label for="fUnit">Unit</label>
+              <select id="fUnit">
+                <option value="tablets">Tablets</option>
+                <option value="capsules">Capsules</option>
+                <option value="ml">ml</option>
+                <option value="units">Units</option>
+                <option value="vials">Vials</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="fQty">Quantity *</label>
+              <input type="number" id="fQty" required min="0" placeholder="0">
+              <span class="form-err" id="fQtyErr">Quantity is required</span>
+            </div>
+            <div class="form-group">
+              <label for="fExpiry">Expiry Date *</label>
+              <input type="date" id="fExpiry" required>
+              <span class="form-err" id="fExpiryErr">Expiry date is required</span>
+            </div>
+            <div class="form-group form-full">
+              <label for="fBarcode">Barcode</label>
+              <div class="barcode-row">
+                <input type="text" id="fBarcode" placeholder="Scan or type barcode">
+                <button type="button" class="btn btn-outline btn-sm" id="scanBarcodeBtn" aria-label="Scan barcode with camera">
+                  <i data-lucide="scan"></i> Scan
+                </button>
+              </div>
+              <span class="form-hint" id="barcodeHint"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2 -->
+        <div class="modal-section">
+          <div class="modal-section-title">Stock Thresholds</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="fThreshold">Min Stock Threshold</label>
+              <input type="number" id="fThreshold" value="10" min="0">
+            </div>
+            <div class="form-group">
+              <label for="fCritical">Critical Level</label>
+              <input type="number" id="fCritical" value="5" min="0">
+            </div>
+            <div class="form-group form-full">
+              <span class="form-hint">Reorder alert triggers at threshold. Critical alert at critical level.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3 -->
+        <div class="modal-section">
+          <div class="modal-section-title">Chronic Disease</div>
+          <div class="toggle-row" style="margin-bottom:0.875rem;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="fIsChronic">
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="fIsChronic" class="toggle-label">Chronic Disease Medicine?</label>
+          </div>
+          <div id="chronicTagGroup" style="display:none;">
+            <div class="form-group">
+              <label for="fDiseaseTag">Disease Tag</label>
+              <select id="fDiseaseTag">
+                <option>Diabetes</option><option>Hypertension</option>
+                <option>Asthma</option><option>Cardiac</option><option>Arthritis</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4 -->
+        <div class="modal-section">
+          <div class="modal-section-title">Supplier Info</div>
+          <div class="form-grid">
+            <div class="form-group form-full">
+              <label for="fSupplierName">Supplier Name</label>
+              <input type="text" id="fSupplierName" placeholder="e.g. MediPharm Wholesale">
+            </div>
+            <div class="form-group">
+              <label for="fSupplierPhone">Phone</label>
+              <input type="tel" id="fSupplierPhone" placeholder="9876543210">
+            </div>
+            <div class="form-group">
+              <label for="fSupplierWA">WhatsApp Number</label>
+              <input type="tel" id="fSupplierWA" placeholder="9876543210">
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('medModalBd')">Cancel</button>
+      <button class="btn btn-primary" id="saveMedBtn">
+        <i data-lucide="save"></i> Save Medicine →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Restock Modal -->
+<div class="modal-backdrop" id="restockModalBd" role="dialog" aria-modal="true" aria-labelledby="restockTitle">
+  <div class="modal modal-sm" id="restockModal">
+    <div class="modal-header">
+      <h2 id="restockTitle">Restock Medicine</h2>
+      <button class="btn-ghost" onclick="closeModal('restockModalBd')" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:1rem;font-size:0.9rem;" id="restockMedName">How much did you receive?</p>
+      <div class="form-group">
+        <label for="restockQtyInput">Quantity Received</label>
+        <input type="number" id="restockQtyInput" min="1" value="20" placeholder="Enter quantity">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('restockModalBd')">Cancel</button>
+      <button class="btn btn-primary" id="confirmRestockBtn">
+        <i data-lucide="plus-circle"></i> Confirm Restock
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Dispense to Patient Modal -->
+<div class="modal-backdrop" id="dispenseModalBd" role="dialog" aria-modal="true" aria-labelledby="dispenseModalTitle">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h2 id="dispenseModalTitle">Dispense Medicine</h2>
+      <button class="btn-ghost" onclick="closeModal('dispenseModalBd')" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--color-surface-2);border-radius:var(--radius-md);padding:0.875rem 1rem;margin-bottom:1.25rem;font-size:0.875rem;border:1px solid var(--color-border);">
+        <div style="font-weight:700;font-size:1rem;" id="dispenseMedName">—</div>
+        <div style="color:var(--color-text-muted);margin-top:3px;" id="dispenseMedStock">—</div>
+      </div>
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label for="dispQtyInput">Quantity to Dispense *</label>
+        <input type="number" id="dispQtyInput" min="1" value="1" placeholder="Enter quantity">
+      </div>
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label for="dispPatientSel">Link to Patient <span style="font-weight:400;color:var(--color-text-muted);">(optional)</span></label>
+        <select id="dispPatientSel">
+          <option value="">— No patient / walk-in —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="dispNotes">Notes <span style="font-weight:400;color:var(--color-text-muted);">(optional)</span></label>
+        <input type="text" id="dispNotes" placeholder="e.g. Morning dose, follow-up">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('dispenseModalBd')">Cancel</button>
+      <button class="btn btn-danger" id="confirmDispenseBtn">
+        <i data-lucide="minus-circle"></i> Confirm Dispense
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Patient Modal -->
+<div class="modal-backdrop" id="patientModalBd" role="dialog" aria-modal="true" aria-labelledby="patModalTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="patModalTitle">Register Patient</h2>
+      <button class="btn-ghost" onclick="closeModal('patientModalBd')" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="patientForm" novalidate>
+        <input type="hidden" id="fPatId">
+        <div class="modal-section">
+          <div class="modal-section-title">Personal Details</div>
+          <div class="form-grid">
+            <div class="form-group form-full">
+              <label for="fPatName">Full Name *</label>
+              <input type="text" id="fPatName" required placeholder="e.g. Rajesh Kumar" autocomplete="off">
+              <span class="form-err" id="fPatNameErr">Patient name is required</span>
+            </div>
+            <div class="form-group">
+              <label for="fPatPhone">Phone Number</label>
+              <input type="tel" id="fPatPhone" placeholder="9876543210">
+            </div>
+            <div class="form-group">
+              <label for="fPatAge">Age</label>
+              <input type="number" id="fPatAge" min="0" max="120" placeholder="e.g. 45">
+            </div>
+            <div class="form-group">
+              <label for="fPatGender">Gender</label>
+              <select id="fPatGender">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="fPatBloodGroup">Blood Group</label>
+              <select id="fPatBloodGroup">
+                <option value="">Unknown</option>
+                <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+                <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+              </select>
+            </div>
+            <div class="form-group form-full">
+              <label for="fPatAddress">Address</label>
+              <input type="text" id="fPatAddress" placeholder="Street, City">
+            </div>
+          </div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-title">Medical Conditions</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.625rem;margin-bottom:0.875rem;">
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;">
+              <input type="checkbox" class="cond-check" value="Diabetes"> Diabetes
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;">
+              <input type="checkbox" class="cond-check" value="Hypertension"> Hypertension
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;">
+              <input type="checkbox" class="cond-check" value="Asthma"> Asthma
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;">
+              <input type="checkbox" class="cond-check" value="Cardiac"> Cardiac
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;">
+              <input type="checkbox" class="cond-check" value="Arthritis"> Arthritis
+            </label>
+          </div>
+          <div class="form-group">
+            <label for="fPatNotes">Clinical Notes</label>
+            <input type="text" id="fPatNotes" placeholder="e.g. On Metformin 500mg daily, check BP">
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('patientModalBd')">Cancel</button>
+      <button class="btn btn-primary" id="savePatientBtn">
+        <i data-lucide="save"></i> Save Patient →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Supplier Modal -->
+<div class="modal-backdrop" id="supplierModalBd" role="dialog" aria-modal="true" aria-labelledby="supModalTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="supModalTitle">Add Supplier</h2>
+      <button class="btn-ghost" onclick="closeModal('supplierModalBd')" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="supplierForm" novalidate>
+        <input type="hidden" id="fSupId">
+        <div class="modal-section">
+          <div class="modal-section-title">Supplier Details</div>
+          <div class="form-grid">
+            <div class="form-group form-full">
+              <label for="fSupName">Supplier / Company Name *</label>
+              <input type="text" id="fSupName" required placeholder="e.g. MediPharm Wholesale Pvt. Ltd." autocomplete="off">
+              <span class="form-err" id="fSupNameErr">Supplier name is required</span>
+            </div>
+            <div class="form-group">
+              <label for="fSupType">Type</label>
+              <select id="fSupType">
+                <option value="Wholesale">Wholesale</option>
+                <option value="Distributor">Distributor</option>
+                <option value="Manufacturer">Manufacturer</option>
+                <option value="Retail">Retail</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="fSupStatus">Status</label>
+              <select id="fSupStatus">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="fSupPhone">Phone *</label>
+              <input type="tel" id="fSupPhone" placeholder="9876543210">
+            </div>
+            <div class="form-group">
+              <label for="fSupWhatsApp">WhatsApp Number</label>
+              <input type="tel" id="fSupWhatsApp" placeholder="9876543210">
+            </div>
+            <div class="form-group">
+              <label for="fSupEmail">Email</label>
+              <input type="email" id="fSupEmail" placeholder="orders@supplier.com">
+            </div>
+            <div class="form-group">
+              <label for="fSupGST">GST Number</label>
+              <input type="text" id="fSupGST" placeholder="22AAAAA0000A1Z5">
+            </div>
+            <div class="form-group form-full">
+              <label for="fSupAddress">Address</label>
+              <input type="text" id="fSupAddress" placeholder="Street, City, State – Pincode">
+            </div>
+            <div class="form-group form-full">
+              <label for="fSupNotes">Notes / Terms</label>
+              <input type="text" id="fSupNotes" placeholder="e.g. Net 30, minimum order ₹5000">
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('supplierModalBd')">Cancel</button>
+      <button class="btn btn-primary" id="saveSupplierBtn">
+        <i data-lucide="save"></i> Save Supplier →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Camera Overlay for Barcode -->
+<div class="camera-overlay" id="cameraOverlay" aria-label="Barcode scanner">
+  <button class="btn btn-danger camera-close" id="cameraCloseBtn" aria-label="Close camera"><i data-lucide="x"></i> Close Camera</button>
+  <video id="cameraVideo" autoplay playsinline></video>
+  <p id="cameraStatus">Scanning for barcode…</p>
+  <canvas id="cameraCanvas" style="display:none;"></canvas>
+</div>
+
+<!-- Toast Container -->
+<div id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ── SCRIPT ─────────────────────────────────────────────────────────────── -->
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// SUPABASE CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+const { createClient } = supabase;
+const SUPABASE_URL     = 'YOUR_SUPABASE_PROJECT_URL';   // ← paste your URL here
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';     // ← paste your anon key here
+
+// ──────────────────────────────────────────────────────────────────
+// DEMO / MOCK MODE (when Supabase isn't wired yet)
+// ──────────────────────────────────────────────────────────────────
+const MOCK = SUPABASE_URL === 'YOUR_SUPABASE_PROJECT_URL';
+let db = null;
+if (!MOCK) { db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+
+// Service Worker for offline
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    self.addEventListener('install', () => self.skipWaiting());
+    self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+    self.addEventListener('fetch', e => {
+      e.respondWith(fetch(e.request).catch(() =>
+        new Response('<h2>PharmaFlow is offline</h2><p>Last loaded data is still available.</p>', {status:503,headers:{'Content-Type':'text/html'}})));
+    });`;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════
+// APPLICATION STATE
+// ══════════════════════════════════════════════════════════════════
+let medicines        = [];
+let alerts_          = [];
+let stockMovements   = [];
+let reorderRequests  = [];
+let patients         = [];
+let patientDispensing = [];
+let suppliersData    = [];
+let pendingWrites    = [];
+let sortCol          = 'name';
+let sortAsc          = true;
+let activeMedCat     = '';
+let editingMedId     = null;
+let editingPatientId = null;
+let editingSupplierId = null;
+let restockMedId_    = null;
+let dispenseMedId_   = null;
+let cameraStream     = null;
+let barcodeInterval  = null;
+let chartInstances   = {};
+let donutChartInst   = null;
+
+// In-memory mock store
+const mockDB = {
+  medicines: [],
+  stock_movements: [],
+  alerts: [],
+  reorder_requests: [],
+  patients: [],
+  patient_dispensing: [],
+  suppliers: []
+};
+
+// ══════════════════════════════════════════════════════════════════
+// STATUS ENGINE
+// ══════════════════════════════════════════════════════════════════
+function getStatus(quantity, threshold, criticalLevel, expiryDate) {
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const expiry   = new Date(expiryDate); expiry.setHours(0,0,0,0);
+  const daysLeft = Math.ceil((expiry - today) / 86400000);
+
+  if (expiry < today)            return { label:'Expired',       color:'#6b7280', bg:'#f3f4f6', cls:'expired',  icon:'ban'            };
+  if (daysLeft <= 30)            return { label:'Expiring Soon', color:'#b45309', bg:'#fef3c7', cls:'expiring', icon:'clock'          };
+  if (quantity <= criticalLevel) return { label:'Critical',      color:'#dc2626', bg:'#fee2e2', cls:'critical', icon:'alert-triangle' };
+  if (quantity <= threshold)     return { label:'Low',           color:'#d97706', bg:'#fef9c3', cls:'low',      icon:'alert-circle'   };
+  return                                { label:'In Stock',      color:'#16a34a', bg:'#dcfce7', cls:'in-stock', icon:'check-circle'   };
+}
+
+function getDaysUntilExpiry(d) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp   = new Date(d); exp.setHours(0,0,0,0);
+  return Math.ceil((exp - today) / 86400000);
+}
+
+function formatDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff/60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return m + ' min ago';
+  const h = Math.floor(m/60);
+  if (h < 24) return h + ' hr ago';
+  return Math.floor(h/24) + ' days ago';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SEED DATA
+// ══════════════════════════════════════════════════════════════════
+const SEED = [
+  { name:"Metformin 500mg",    category:"Antidiabetic",     quantity:8,  unit:"tablets",  expiry_date:"2026-09-01", threshold:20, critical_level:5,  is_chronic_disease_med:true,  chronic_disease_tag:"Diabetes",      supplier_name:"MediPharm Wholesale", supplier_phone:"9876543210", supplier_whatsapp:"9876543210" },
+  { name:"Amlodipine 5mg",     category:"Antihypertensive", quantity:4,  unit:"tablets",  expiry_date:"2026-07-15", threshold:15, critical_level:5,  is_chronic_disease_med:true,  chronic_disease_tag:"Hypertension",  supplier_name:"CityMed Suppliers",   supplier_phone:"9123456789", supplier_whatsapp:"9123456789" },
+  { name:"Paracetamol 650mg",  category:"Painkiller",       quantity:85, unit:"tablets",  expiry_date:"2027-03-20", threshold:30, critical_level:10, is_chronic_disease_med:false, chronic_disease_tag:null,            supplier_name:"MediPharm Wholesale", supplier_phone:"9876543210", supplier_whatsapp:"9876543210" },
+  { name:"Salbutamol Inhaler", category:"Respiratory",      quantity:3,  unit:"units",    expiry_date:"2026-04-30", threshold:5,  critical_level:2,  is_chronic_disease_med:true,  chronic_disease_tag:"Asthma",        supplier_name:"BreatheWell Pharma",  supplier_phone:"9988776655", supplier_whatsapp:"9988776655" },
+  { name:"Aspirin 75mg",       category:"Cardiac",          quantity:12, unit:"tablets",  expiry_date:"2025-12-01", threshold:20, critical_level:5,  is_chronic_disease_med:true,  chronic_disease_tag:"Cardiac",       supplier_name:"CityMed Suppliers",   supplier_phone:"9123456789", supplier_whatsapp:"9123456789" },
+  { name:"Amoxicillin 500mg",  category:"Antibiotic",       quantity:22, unit:"capsules", expiry_date:"2026-12-10", threshold:15, critical_level:5,  is_chronic_disease_med:false, chronic_disease_tag:null,            supplier_name:"MediPharm Wholesale", supplier_phone:"9876543210", supplier_whatsapp:"9876543210" }
+];
+
+const SEED_PATIENTS = [
+  { name:"Rajesh Kumar",    phone:"9811234567", age:58, gender:"Male",   blood_group:"B+",  address:"12 MG Road, Bangalore",      chronic_conditions:"Diabetes,Hypertension", notes:"On Metformin 500mg daily. Monitor BP weekly." },
+  { name:"Priya Sharma",    phone:"9822345678", age:45, gender:"Female", blood_group:"O+",  address:"45 Park Street, Bangalore",  chronic_conditions:"Hypertension",          notes:"Check BP at each visit." },
+  { name:"Mohammed Ali",    phone:"9833456789", age:62, gender:"Male",   blood_group:"A+",  address:"78 Nehru Nagar, Bangalore",  chronic_conditions:"Cardiac,Diabetes",      notes:"On Aspirin 75mg. Check blood sugar monthly." },
+  { name:"Sunita Devi",     phone:"9844567890", age:38, gender:"Female", blood_group:"AB+", address:"34 Gandhi Road, Bangalore",  chronic_conditions:"Asthma",                notes:"Uses Salbutamol inhaler as needed." },
+  { name:"Anand Verma",     phone:"9855678901", age:52, gender:"Male",   blood_group:"B-",  address:"90 Lal Bagh Road, Bangalore", chronic_conditions:"",                     notes:"Walk-in patient for general ailments." }
+];
+
+const SEED_SUPPLIERS = [
+  { name:"MediPharm Wholesale",  type:"Wholesale",   phone:"9876543210", whatsapp:"9876543210", email:"orders@medipharm.in",   gst:"29AABCM1234A1Z5", address:"#14 Industrial Area, Peenya, Bangalore – 560058", notes:"Net 30 days. Min order ₹3,000.",    status:"Active" },
+  { name:"CityMed Suppliers",    type:"Distributor",  phone:"9123456789", whatsapp:"9123456789", email:"supply@citymed.co.in",  gst:"29AADFC5678B1Z2", address:"#8 Rajaji Nagar, Bangalore – 560010",           notes:"Same-day delivery. COD available.", status:"Active" },
+  { name:"BreatheWell Pharma",   type:"Manufacturer", phone:"9988776655", whatsapp:"9988776655", email:"sales@breathewell.com", gst:"29AABCB9012C1Z8", address:"#22 Whitefield Road, Bangalore – 560066",        notes:"Respiratory products specialist.",  status:"Active" }
+];
+
+// ══════════════════════════════════════════════════════════════════
+// SUPABASE / MOCK DB LAYER
+// ══════════════════════════════════════════════════════════════════
+async function dbFetchMedicines() {
+  if (MOCK) {
+    return mockDB.medicines.map(m => ({...m, status: getStatus(m.quantity, m.threshold, m.critical_level, m.expiry_date)}));
+  }
+  try {
+    const { data, error } = await db.from('medicines').select('*').order('name');
+    if (error) throw error;
+    return (data||[]).map(m => ({...m, status: getStatus(m.quantity, m.threshold, m.critical_level, m.expiry_date)}));
+  } catch(e) { console.error(e); showToast("Couldn't load medicines. Please try again.", 'error'); return []; }
+}
+
+async function dbAddMedicine(med) {
+  if (MOCK) {
+    med.id = crypto.randomUUID(); med.created_at = new Date().toISOString(); med.updated_at = med.created_at;
+    mockDB.medicines.push(med); return med;
+  }
+  try {
+    const { data, error } = await db.from('medicines').insert([med]).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); showToast("Couldn't save medicine. Please try again.", 'error'); return null; }
+}
+
+async function dbUpdateMedicine(id, updates) {
+  updates.updated_at = new Date().toISOString();
+  if (MOCK) {
+    const i = mockDB.medicines.findIndex(m => m.id === id);
+    if (i >= 0) mockDB.medicines[i] = {...mockDB.medicines[i], ...updates};
+    return mockDB.medicines[i];
+  }
+  try {
+    const { data, error } = await db.from('medicines').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); showToast("Couldn't update medicine. Please try again.", 'error'); return null; }
+}
+
+async function dbDeleteMedicine(id) {
+  if (MOCK) { mockDB.medicines = mockDB.medicines.filter(m => m.id !== id); return true; }
+  try {
+    const { error } = await db.from('medicines').delete().eq('id', id);
+    if (error) throw error; return true;
+  } catch(e) { console.error(e); showToast("Couldn't delete medicine. Please try again.", 'error'); return false; }
+}
+
+async function dbInsertMovement(movement) {
+  if (MOCK) { movement.id = crypto.randomUUID(); movement.created_at = new Date().toISOString(); mockDB.stock_movements.push(movement); return; }
+  try { await db.from('stock_movements').insert([movement]); } catch(e) { console.error(e); }
+}
+
+async function dbFetchMovements() {
+  if (MOCK) return mockDB.stock_movements;
+  try {
+    const since = new Date(); since.setDate(since.getDate()-30);
+    const { data } = await db.from('stock_movements').select('*').gte('created_at', since.toISOString()).order('created_at');
+    return data || [];
+  } catch(e) { return []; }
+}
+
+async function dbFetchAlerts() {
+  if (MOCK) return mockDB.alerts.filter(a => !a.is_dismissed);
+  try {
+    const { data } = await db.from('alerts').select('*,medicines(name)').eq('is_dismissed', false).order('created_at', {ascending:false}).limit(20);
+    return data || [];
+  } catch(e) { return []; }
+}
+
+async function dbDismissAlert(id) {
+  if (MOCK) { const a = mockDB.alerts.find(a=>a.id===id); if(a) a.is_dismissed=true; return; }
+  try { await db.from('alerts').update({is_dismissed:true}).eq('id',id); } catch(e) { console.error(e); }
+}
+
+async function dbFetchReorderRequests() {
+  if (MOCK) return mockDB.reorder_requests;
+  try {
+    const { data } = await db.from('reorder_requests').select('*').order('created_at', {ascending:false});
+    return data || [];
+  } catch(e) { return []; }
+}
+
+async function dbCreateReorderRequest(req) {
+  if (MOCK) { req.id=crypto.randomUUID(); req.created_at=new Date().toISOString(); mockDB.reorder_requests.push(req); return req; }
+  try {
+    const { data, error } = await db.from('reorder_requests').insert([req]).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); return null; }
+}
+
+// ── PATIENT DB FUNCTIONS ──────────────────────────────────────────
+async function dbFetchPatients() {
+  if (MOCK) return mockDB.patients;
+  try {
+    const { data, error } = await db.from('patients').select('*').order('name');
+    if (error) throw error; return data || [];
+  } catch(e) { console.error(e); return []; }
+}
+
+async function dbAddPatient(p) {
+  if (MOCK) {
+    p.id = crypto.randomUUID(); p.created_at = new Date().toISOString();
+    mockDB.patients.push(p); return p;
+  }
+  try {
+    const { data, error } = await db.from('patients').insert([p]).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); showToast("Couldn't save patient. Please try again.", 'error'); return null; }
+}
+
+async function dbUpdatePatient(id, updates) {
+  if (MOCK) {
+    const i = mockDB.patients.findIndex(p => p.id === id);
+    if (i >= 0) mockDB.patients[i] = {...mockDB.patients[i], ...updates};
+    return mockDB.patients[i];
+  }
+  try {
+    const { data, error } = await db.from('patients').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); showToast("Couldn't update patient.", 'error'); return null; }
+}
+
+async function dbDeletePatient(id) {
+  if (MOCK) { mockDB.patients = mockDB.patients.filter(p => p.id !== id); return true; }
+  try {
+    const { error } = await db.from('patients').delete().eq('id', id);
+    if (error) throw error; return true;
+  } catch(e) { console.error(e); showToast("Couldn't delete patient.", 'error'); return false; }
+}
+
+async function dbFetchPatientDispensing() {
+  if (MOCK) return mockDB.patient_dispensing;
+  try {
+    const { data } = await db.from('patient_dispensing').select('*,patients(name)').order('dispensed_at', {ascending:false});
+    return data || [];
+  } catch(e) { return []; }
+}
+
+async function dbInsertPatientDispensing(rec) {
+  if (MOCK) {
+    rec.id = crypto.randomUUID();
+    rec.dispensed_at = rec.dispensed_at || new Date().toISOString();
+    mockDB.patient_dispensing.push(rec); return rec;
+  }
+  try {
+    const { data, error } = await db.from('patient_dispensing').insert([rec]).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); return null; }
+}
+
+// ── SUPPLIER DB FUNCTIONS ─────────────────────────────────────────
+async function dbFetchSuppliers() {
+  if (MOCK) return mockDB.suppliers;
+  try {
+    const { data, error } = await db.from('suppliers').select('*').order('name');
+    if (error) throw error; return data || [];
+  } catch(e) { console.error(e); return []; }
+}
+
+async function dbAddSupplier(s) {
+  if (MOCK) {
+    s.id = crypto.randomUUID(); s.created_at = new Date().toISOString();
+    mockDB.suppliers.push(s); return s;
+  }
+  try {
+    const { data, error } = await db.from('suppliers').insert([s]).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); showToast("Couldn't save supplier.", 'error'); return null; }
+}
+
+async function dbUpdateSupplier(id, updates) {
+  if (MOCK) {
+    const i = mockDB.suppliers.findIndex(s => s.id === id);
+    if (i >= 0) mockDB.suppliers[i] = {...mockDB.suppliers[i], ...updates};
+    return mockDB.suppliers[i];
+  }
+  try {
+    const { data, error } = await db.from('suppliers').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data;
+  } catch(e) { console.error(e); showToast("Couldn't update supplier.", 'error'); return null; }
+}
+
+async function dbDeleteSupplier(id) {
+  if (MOCK) { mockDB.suppliers = mockDB.suppliers.filter(s => s.id !== id); return true; }
+  try {
+    const { error } = await db.from('suppliers').delete().eq('id', id);
+    if (error) throw error; return true;
+  } catch(e) { console.error(e); showToast("Couldn't delete supplier.", 'error'); return false; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ALERT GENERATOR
+// ══════════════════════════════════════════════════════════════════
+async function generateAlerts() {
+  const newAlerts = [];
+  for (const med of medicines) {
+    const d = getDaysUntilExpiry(med.expiry_date);
+    if (d < 0)
+      newAlerts.push({ medicine_id:med.id, alert_type:'expired',       is_dismissed:false, message:`${med.name} has EXPIRED — remove from stock immediately.`, created_at:new Date().toISOString() });
+    else if (d <= 30)
+      newAlerts.push({ medicine_id:med.id, alert_type:'expiring_soon', is_dismissed:false, message:`${med.name} expires in ${d} days.`, created_at:new Date().toISOString() });
+    if (med.quantity <= med.critical_level)
+      newAlerts.push({ medicine_id:med.id, alert_type:'critical_stock',is_dismissed:false, message:`${med.name} is CRITICALLY LOW — only ${med.quantity} ${med.unit} left.`, created_at:new Date().toISOString() });
+    else if (med.quantity <= med.threshold)
+      newAlerts.push({ medicine_id:med.id, alert_type:'low_stock',     is_dismissed:false, message:`${med.name} is LOW (${med.quantity} / ${med.threshold} ${med.unit}).`, created_at:new Date().toISOString() });
+  }
+
+  if (MOCK) {
+    mockDB.alerts = mockDB.alerts.filter(a => a.is_dismissed);
+    newAlerts.forEach(a => { a.id = crypto.randomUUID(); mockDB.alerts.push(a); });
+  } else {
+    if (newAlerts.length) {
+      try { await db.from('alerts').upsert(newAlerts, { onConflict:'medicine_id,alert_type' }); } catch(e) { console.error(e); }
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MAIN ACTIONS
+// ══════════════════════════════════════════════════════════════════
+async function dispenseMedicine(id, amount, patientId, notes) {
+  const med = medicines.find(m => m.id === id);
+  if (!med) return;
+  const newQty = Math.max(0, med.quantity - amount);
+  const ok = await dbUpdateMedicine(id, { quantity: newQty });
+  if (!ok) return;
+  await dbInsertMovement({ medicine_id:id, change_amount:-amount, reason:'dispensed', notes: notes || `Dispensed ${amount} ${med.unit}` });
+  // Link to patient if provided
+  if (patientId) {
+    await dbInsertPatientDispensing({
+      patient_id: patientId,
+      medicine_id: id,
+      medicine_name: med.name,
+      quantity: amount,
+      unit: med.unit,
+      dispensed_at: new Date().toISOString(),
+      notes: notes || ''
+    });
+    const pat = patients.find(p => p.id === patientId);
+    showToast(`${med.name} dispensed to ${pat ? pat.name : 'patient'} ✅`, 'success');
+  } else {
+    showToast(`${med.name}: ${med.quantity} → ${newQty} ${med.unit} ✅`, 'success');
+  }
+  await refreshAll();
+}
+
+async function restockMedicine(id, amount) {
+  const med = medicines.find(m => m.id === id);
+  if (!med) return;
+  const newQty = med.quantity + amount;
+  const ok = await dbUpdateMedicine(id, { quantity: newQty });
+  if (!ok) return;
+  await dbInsertMovement({ medicine_id:id, change_amount:+amount, reason:'restock', notes:`Restocked ${amount} ${med.unit}` });
+  showToast(`${med.name}: ${med.quantity} → ${newQty} ${med.unit} ✅`, 'success');
+  await refreshAll();
+}
+
+async function deleteMedicine(id) {
+  const ok = await dbDeleteMedicine(id);
+  if (ok) { showToast('Medicine removed', 'success'); await refreshAll(); }
+}
+
+async function createReorderRequest(medicineId, quantity) {
+  const req = await dbCreateReorderRequest({ medicine_id:medicineId, requested_quantity:quantity, status:'pending' });
+  if (req) { showToast('Reorder request created ✅', 'success'); await refreshAll(); }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// REFRESH
+// ══════════════════════════════════════════════════════════════════
+async function refreshAll() {
+  medicines          = await dbFetchMedicines();
+  alerts_            = await dbFetchAlerts();
+  stockMovements     = await dbFetchMovements();
+  reorderRequests    = await dbFetchReorderRequests();
+  patients           = await dbFetchPatients();
+  patientDispensing  = await dbFetchPatientDispensing();
+  suppliersData      = await dbFetchSuppliers();
+
+  // Auto-remove expired medicines
+  await autoRemoveExpired();
+
+  await generateAlerts();
+  alerts_ = await dbFetchAlerts();
+  renderAll();
+}
+
+async function autoRemoveExpired() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const expired = medicines.filter(m => {
+    const exp = new Date(m.expiry_date); exp.setHours(0,0,0,0);
+    return exp < today;
+  });
+  for (const m of expired) {
+    await dbInsertMovement({ medicine_id: m.id, change_amount: -m.quantity, reason: 'expired_disposal', notes: `Auto-removed: ${m.name} expired on ${m.expiry_date}` });
+    await dbDeleteMedicine(m.id);
+  }
+  if (expired.length > 0) {
+    showToast(`🗑️ ${expired.length} expired medicine${expired.length > 1 ? 's' : ''} auto-removed`, 'info');
+    // Re-fetch medicines after deletion
+    medicines = await dbFetchMedicines();
+  }
+}
+
+function renderAll() {
+  renderDashboard();
+  renderMedicineNavBar();
+  renderInventoryTable();
+  renderReorderPage();
+  renderAnalytics();
+  renderSuppliers();
+  renderPatientsPage();
+  renderAlertBanners();
+  updateBadges();
+  lucide.createIcons();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — DASHBOARD
+// ══════════════════════════════════════════════════════════════════
+function renderDashboard() {
+  const total       = medicines.length;
+  const critExp     = medicines.filter(m => ['Critical','Expired'].includes(m.status.label)).length;
+  const low         = medicines.filter(m => m.status.label === 'Low').length;
+  const expiring    = medicines.filter(m => m.status.label === 'Expiring Soon').length;
+
+  document.getElementById('kpiTotal').textContent    = total;
+  document.getElementById('kpiCritical').textContent = critExp;
+  document.getElementById('kpiLow').textContent      = low;
+  document.getElementById('kpiExpiring').textContent = expiring;
+
+  // Patient stats bar on dashboard
+  const today = new Date().toISOString().slice(0,10);
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const servedToday   = [...new Set(patientDispensing.filter(d => d.dispensed_at?.slice(0,10)===today).map(d=>d.patient_id))].length;
+  const servedMonth   = [...new Set(patientDispensing.filter(d => d.dispensed_at?.slice(0,7)===thisMonth).map(d=>d.patient_id))].length;
+  const chronicPats   = patients.filter(p => p.chronic_conditions && p.chronic_conditions.trim() !== '').length;
+  document.getElementById('pstatTotal').textContent   = patients.length;
+  document.getElementById('pstatToday').textContent   = servedToday;
+  document.getElementById('pstatMonth').textContent   = servedMonth;
+  document.getElementById('pstatChronic').textContent = chronicPats;
+
+  // System info update
+  const lastSync = new Date().toLocaleTimeString('en-IN');
+  document.getElementById('systemInfo').innerHTML = `
+    <div>Mode: <strong>${MOCK ? 'Demo (offline mock)' : 'Live (Supabase)'}</strong></div>
+    <div>Medicines: <strong>${total}</strong> &nbsp;|&nbsp; Patients: <strong>${patients.length}</strong></div>
+    <div>Last refresh: <strong>${lastSync}</strong></div>
+    <div>Active alerts: <strong>${alerts_.length}</strong></div>
+  `;
+
+  // Chronic monitor
+  const diseases = [
+    { tag:'Diabetes', icon:'activity' },
+    { tag:'Hypertension', icon:'heart' },
+    { tag:'Asthma', icon:'wind' },
+    { tag:'Cardiac', icon:'heart-pulse' },
+    { tag:'Arthritis', icon:'bone' }
+  ];
+  document.getElementById('chronicGrid').innerHTML = diseases.map(({tag,icon}) => {
+    const meds   = medicines.filter(m => m.chronic_disease_tag === tag);
+    const bad    = meds.filter(m => ['Critical','Low','Expired'].includes(m.status.label));
+    const crit   = meds.filter(m => m.status.label === 'Critical' || m.status.label === 'Expired');
+    let statusCls = 'ok', statusTxt = '✅ All Stocked';
+    if (crit.length > 0)  { statusCls = 'danger'; statusTxt = `🚨 ${crit.length} Critical`; }
+    else if (bad.length > 0) { statusCls = 'warn'; statusTxt = `⚠️ ${bad.length} Need Attention`; }
+    return `<div class="chronic-card" onclick="filterByDisease('${tag}')" tabindex="0" onkeydown="if(event.key==='Enter')filterByDisease('${tag}')" aria-label="${tag} medicines - ${statusTxt}">
+      <div class="chronic-icon"><i data-lucide="${icon}"></i></div>
+      <div class="chronic-name">${tag}</div>
+      <div class="chronic-count">${meds.length} medicines</div>
+      <div class="chronic-status ${statusCls}">${statusTxt}</div>
+    </div>`;
+  }).join('');
+
+  // Alerts list
+  const alertsEl = document.getElementById('alertsList');
+  if (!alerts_.length) {
+    alertsEl.innerHTML = `<div class="empty-state"><i data-lucide="check-circle"></i><p>✅ No active alerts — all medicines are in good shape</p></div>`;
+  } else {
+    alertsEl.innerHTML = alerts_.slice(0,10).map(a => {
+      const iconColor = (a.alert_type==='expired'||a.alert_type==='critical_stock') ? '#dc2626' : '#d97706';
+      const iconName  = (a.alert_type==='expired'||a.alert_type==='critical_stock') ? 'alert-triangle' : 'alert-circle';
+      return `<div class="alert-row">
+        <div class="alert-icon-wrap" style="color:${iconColor}"><i data-lucide="${iconName}"></i></div>
+        <div class="alert-msg">
+          ${escHtml(a.message)}
+          <div class="alert-time">${timeAgo(a.created_at)}</div>
+        </div>
+        <button class="alert-dismiss" onclick="dismissAlert('${a.id}')" aria-label="Dismiss alert"><i data-lucide="x"></i></button>
+      </div>`;
+    }).join('');
+  }
+
+  // Donut chart
+  renderDonutChart();
+
+}
+
+function renderDonutChart() {
+  const counts = { 'In Stock':0, 'Low':0, 'Critical':0, 'Expired':0, 'Expiring Soon':0 };
+  medicines.forEach(m => { if(counts[m.status.label]!==undefined) counts[m.status.label]++; });
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  if (donutChartInst) donutChartInst.destroy();
+  donutChartInst = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['In Stock', 'Low', 'Critical', 'Expired', 'Expiring Soon'],
+      datasets: [{
+        data: [counts['In Stock'], counts['Low'], counts['Critical'], counts['Expired'], counts['Expiring Soon']],
+        backgroundColor: ['#16a34a', '#d97706', '#dc2626', '#6b7280', '#b45309'],
+        borderWidth: 0, hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: {
+        legend: { position:'bottom', labels:{ font:{family:'Satoshi',size:12}, color: getComputedStyle(document.documentElement).getPropertyValue('--color-text'), padding:16 }},
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${c.parsed}` }}
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — ALERT BANNERS
+// ══════════════════════════════════════════════════════════════════
+function renderAlertBanners() {
+  const expiredCount  = medicines.filter(m => m.status.label === 'Expired').length;
+  const critCount     = medicines.filter(m => m.status.label === 'Critical').length;
+  const expiringSoon  = medicines.filter(m => m.status.label === 'Expiring Soon').length;
+  let html = '';
+  if (expiredCount > 0)
+    html += `<div class="alert-banner expired" role="alert">🔴 <strong>${expiredCount} medicine${expiredCount>1?'s':''} ${expiredCount>1?'have':'has'} EXPIRED</strong> — remove from stock immediately
+      <button class="ban-dismiss" onclick="this.parentElement.remove()" aria-label="Dismiss banner"><i data-lucide="x"></i></button></div>`;
+  if (critCount > 0)
+    html += `<div class="alert-banner critical" role="alert">🔴 <strong>${critCount} medicine${critCount>1?'s':''} ${critCount>1?'are':'is'} CRITICALLY LOW</strong> — reorder now
+      <button class="ban-dismiss" onclick="this.parentElement.remove()" aria-label="Dismiss banner"><i data-lucide="x"></i></button></div>`;
+  if (expiringSoon > 0)
+    html += `<div class="alert-banner expiring" role="alert">🟡 <strong>${expiringSoon} medicine${expiringSoon>1?'s':''}</strong> expiring within 30 days
+      <button class="ban-dismiss" onclick="this.parentElement.remove()" aria-label="Dismiss banner"><i data-lucide="x"></i></button></div>`;
+  document.getElementById('alertBannersWrap').innerHTML = html;
+}
+
+async function dismissAlert(id) {
+  await dbDismissAlert(id);
+  alerts_ = alerts_.filter(a => a.id !== id);
+  renderDashboard();
+  lucide.createIcons();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — INVENTORY TABLE
+// ══════════════════════════════════════════════════════════════════
+function renderInventoryTable() {
+  const search   = (document.getElementById('searchInput').value || '').toLowerCase();
+  const cat      = activeMedCat || document.getElementById('catFilter').value;
+  const status   = document.getElementById('statusFilter').value;
+  const disease  = document.getElementById('diseaseFilter').value;
+
+  // Sync cat dropdown if activeMedCat is set
+  if (activeMedCat) document.getElementById('catFilter').value = activeMedCat;
+
+  let filtered = medicines.filter(m => {
+    const name = (m.name||'').toLowerCase();
+    const bc   = (m.barcode||'').toLowerCase();
+    return (!search || name.includes(search) || bc.includes(search))
+        && (!cat    || m.category === cat)
+        && (!status || m.status.label === status)
+        && (!disease|| m.chronic_disease_tag === disease);
+  });
+
+  // Sort
+  filtered.sort((a,b) => {
+    let va = a[sortCol] ?? a.status?.label ?? '';
+    let vb = b[sortCol] ?? b.status?.label ?? '';
+    if (sortCol === 'status_label') { va = a.status.label; vb = b.status.label; }
+    if (typeof va === 'number') return sortAsc ? va-vb : vb-va;
+    return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('thead th').forEach(th => {
+    th.classList.remove('sorted-asc','sorted-desc');
+    if (th.dataset.sort === sortCol) th.classList.add(sortAsc ? 'sorted-asc' : 'sorted-desc');
+  });
+
+  const body = document.getElementById('inventoryBody');
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="7">
+      <div class="empty-state">
+        <i data-lucide="package"></i>
+        <p>No medicines found. ${search||cat||status||disease ? 'Try clearing your filters.' : ''}</p>
+        ${!search&&!cat&&!status&&!disease ? `<button class="btn btn-primary" onclick="openAddMedModal()"><i data-lucide="plus"></i> Add Medicine</button>` : ''}
+      </div>
+    </td></tr>`;
+    lucide.createIcons();
+    return;
+  }
+
+  body.innerHTML = filtered.map(m => {
+    const daysLeft = getDaysUntilExpiry(m.expiry_date);
+    const daysClass = daysLeft < 0 ? 'red' : daysLeft > 90 ? 'green' : '';
+    const expiryClass = daysLeft < 0 ? 'text-red' : '';
+    const existingReq = reorderRequests.find(r => r.medicine_id === m.id && r.status !== 'received');
+    const reorderStatus = existingReq ? existingReq.status : null;
+
+    return `<tr tabindex="0" data-id="${m.id}">
+      <td>
+        <div class="med-name">${escHtml(m.name)}</div>
+        <div class="med-sub">${m.barcode ? 'BC: '+escHtml(m.barcode) : ''} ${m.chronic_disease_tag ? '🏥 '+m.chronic_disease_tag : ''}</div>
+      </td>
+      <td><span class="badge cat">${escHtml(m.category)}</span></td>
+      <td>
+        <div class="qty-ctrl">
+          <button class="qty-btn minus" onclick="handleDispense('${m.id}')" aria-label="Dispense ${m.name}">−</button>
+          <input class="qty-inp" type="number" id="qtyInp_${m.id}" value="1" min="1" max="${m.quantity}" aria-label="Quantity to dispense">
+          <button class="qty-btn plus" onclick="openRestockModal('${m.id}')" aria-label="Restock ${m.name}">+</button>
+        </div>
+        <div class="qty-current">${m.quantity} ${m.unit}</div>
+      </td>
+      <td><span class="badge ${m.status.cls}" style="background:${m.status.bg};color:${m.status.color};" aria-label="Status: ${m.status.label}">
+        <i data-lucide="${m.status.icon}"></i> ${m.status.label}
+      </span></td>
+      <td>
+        <div class="${expiryClass}" style="font-size:0.85rem;">${formatDate(m.expiry_date)}</div>
+        <div class="days-left ${daysClass}">${daysLeft < 0 ? 'Expired' : daysLeft + ' days'}</div>
+      </td>
+      <td title="${escHtml(m.supplier_name||'')}">
+        <div style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.82rem;">${escHtml(m.supplier_name||'—')}</div>
+        <div style="font-size:0.72rem;color:var(--color-text-muted);">${m.supplier_phone||''}</div>
+      </td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn-icon" onclick="editMedicine('${m.id}')" aria-label="Edit ${m.name}" title="Edit"><i data-lucide="edit-2"></i></button>
+          <button class="btn-icon danger" onclick="confirmDeleteMed('${m.id}')" aria-label="Delete ${m.name}" title="Delete"><i data-lucide="trash-2"></i></button>
+          <button class="btn-icon" onclick="quickReorder('${m.id}')" aria-label="Reorder ${m.name}" title="Create Reorder" style="color:${reorderStatus?'var(--color-warning)':''}">
+            <i data-lucide="${reorderStatus ? 'check-circle' : 'refresh-cw'}"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = true; }
+  renderInventoryTable();
+}
+
+async function handleDispense(id) {
+  const inp = document.getElementById(`qtyInp_${id}`);
+  const amt = parseInt(inp.value) || 1;
+  if (amt <= 0) { showToast('Enter a valid quantity to dispense', 'error'); return; }
+  inp.closest('td').classList.add('flash-red');
+  setTimeout(() => inp.closest('td').classList.remove('flash-red'), 600);
+  await dispenseMedicine(id, amt);
+}
+
+function confirmDeleteMed(id) {
+  const m = medicines.find(m => m.id === id);
+  if (!m) return;
+  const confirmed = confirm(`Delete "${m.name}"?\nThis action cannot be undone.`);
+  if (confirmed) deleteMedicine(id);
+}
+
+async function quickReorder(id) {
+  const m = medicines.find(m => m.id === id);
+  if (!m) return;
+  const sugQty = Math.max(m.threshold * 2 - m.quantity, m.threshold);
+  await createReorderRequest(id, sugQty);
+}
+
+function filterByDisease(tag) {
+  navigateTo('inventory');
+  document.getElementById('diseaseFilter').value = tag;
+  document.getElementById('catFilter').value = '';
+  document.getElementById('statusFilter').value = '';
+  document.getElementById('searchInput').value = '';
+  renderInventoryTable();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — REORDER PAGE
+// ══════════════════════════════════════════════════════════════════
+function renderReorderPage() {
+  document.getElementById('reorder').setAttribute('data-print-date', new Date().toLocaleDateString('en-IN'));
+  const needsReorder = medicines.filter(m => m.quantity <= m.threshold || getDaysUntilExpiry(m.expiry_date) < 0);
+  const grid = document.getElementById('reorderGrid');
+
+  if (!needsReorder.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;padding:3rem;background:var(--color-surface);border-radius:var(--radius-lg);border:1px solid var(--color-border);">
+      <i data-lucide="check-circle"></i>
+      <p>✅ All medicines are sufficiently stocked — no reorders needed</p>
+    </div>`;
+    lucide.createIcons(); return;
+  }
+
+  grid.innerHTML = needsReorder.map(m => {
+    const sugQty   = Math.max((m.threshold * 2) - m.quantity, 1);
+    const existReq = reorderRequests.find(r => r.medicine_id === m.id && r.status !== 'received');
+    const reqStatus = existReq ? existReq.status : null;
+    const waNum    = (m.supplier_whatsapp||'').replace(/\D/g,'');
+    const waText   = encodeURIComponent(`Reorder Request:\n- ${m.name} × ${sugQty} ${m.unit}\n\nThank you — Clinic`);
+    const smsText  = encodeURIComponent(`Reorder Request: ${m.name}, Qty: ${sugQty} ${m.unit}, From: Clinic`);
+
+    return `<div class="reorder-card">
+      <div class="rc-top">
+        <div>
+          <div class="rc-name">${escHtml(m.name)}</div>
+          <div class="rc-cat"><span class="badge cat">${escHtml(m.category)}</span></div>
+        </div>
+        <span class="badge ${m.status.cls}" style="background:${m.status.bg};color:${m.status.color};">${m.status.label}</span>
+      </div>
+      <div class="rc-info">
+        <span>📦 Current: <strong>${m.quantity} ${m.unit}</strong> &nbsp;|&nbsp; Min: ${m.threshold}</span>
+        <span>📅 Expiry: ${formatDate(m.expiry_date)}</span>
+        <span>🏢 ${escHtml(m.supplier_name||'No supplier')} &nbsp;|&nbsp; 📞 ${m.supplier_phone||'—'}</span>
+      </div>
+      <div class="rc-highlight">
+        <span>Suggested Reorder Qty:</span>
+        <strong>${sugQty} ${m.unit}</strong>
+      </div>
+      ${reqStatus ? `<div style="text-align:center;"><span class="badge ${reqStatus==='sent'?'sent':reqStatus==='received'?'received':'pending'}">
+        ${reqStatus==='pending'?'⏳ Reorder Pending':reqStatus==='sent'?'📤 Sent':'✅ Received'}
+      </span></div>` : ''}
+      <div class="rc-actions">
+        <button class="btn btn-green btn-sm" onclick="quickReorder('${m.id}')" aria-label="One-click reorder ${m.name}">
+          <i data-lucide="refresh-cw"></i> Reorder
+        </button>
+        ${waNum ? `<button class="btn btn-whatsapp btn-sm" onclick="window.open('https://wa.me/${waNum}?text=${waText}','_blank')" aria-label="WhatsApp reorder for ${m.name}">
+          <i data-lucide="message-circle"></i> WhatsApp
+        </button>` : ''}
+        ${m.supplier_phone ? `<button class="btn btn-sms btn-sm" onclick="window.open('sms:${m.supplier_phone}?body=${smsText}','_self')" aria-label="SMS reorder for ${m.name}">
+          <i data-lucide="smartphone"></i> SMS
+        </button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  lucide.createIcons();
+}
+
+// WhatsApp All
+document.getElementById('sendAllWABtn').addEventListener('click', () => {
+  const needsReorder = medicines.filter(m => m.quantity <= m.threshold || getDaysUntilExpiry(m.expiry_date) < 0);
+  const bySupplier = {};
+  needsReorder.forEach(m => {
+    const key = m.supplier_whatsapp || m.supplier_phone || 'unknown';
+    if (!bySupplier[key]) bySupplier[key] = { wa: m.supplier_whatsapp, name: m.supplier_name, meds:[] };
+    const sug = Math.max((m.threshold*2)-m.quantity,1);
+    bySupplier[key].meds.push({ name:m.name, qty:sug, unit:m.unit });
+  });
+  Object.values(bySupplier).forEach(sup => {
+    if (!sup.wa) return;
+    const lines = sup.meds.map(med => `- ${med.name} × ${med.qty} ${med.unit}`).join('\n');
+    const msg = encodeURIComponent(`Hi ${sup.name||''},\nPlease restock the following:\n${lines}\n\nThank you — Clinic`);
+    window.open(`https://wa.me/${sup.wa.replace(/\D/g,'')}?text=${msg}`, '_blank');
+  });
+  showToast(`WhatsApp opened for ${Object.keys(bySupplier).length} suppliers ✅`, 'success');
+});
+
+// SMS All
+document.getElementById('sendAllSMSBtn').addEventListener('click', () => {
+  const needsReorder = medicines.filter(m => m.quantity <= m.threshold || getDaysUntilExpiry(m.expiry_date) < 0);
+  const byPhone = {};
+  needsReorder.forEach(m => {
+    if (!m.supplier_phone) return;
+    if (!byPhone[m.supplier_phone]) byPhone[m.supplier_phone] = { phone:m.supplier_phone, meds:[] };
+    const sug = Math.max((m.threshold*2)-m.quantity,1);
+    byPhone[m.supplier_phone].meds.push(`${m.name} x${sug}`);
+  });
+  Object.values(byPhone).forEach(sup => {
+    const body = encodeURIComponent(`Hi, please restock:\n${sup.meds.join('\n')}\nThank you`);
+    window.open(`sms:${sup.phone}?body=${body}`, '_self');
+  });
+  showToast(`SMS opened for ${Object.keys(byPhone).length} suppliers ✅`, 'success');
+});
+
+// CSV Download
+function downloadCSV() {
+  const needsReorder = medicines.filter(m => m.quantity <= m.threshold || getDaysUntilExpiry(m.expiry_date) < 0);
+  const rows = [
+    ['Medicine Name','Category','Current Qty','Unit','Threshold','Expiry','Supplier','Phone','Suggested Order'],
+    ...needsReorder.map(m => [
+      m.name, m.category, m.quantity, m.unit, m.threshold,
+      m.expiry_date, m.supplier_name||'', m.supplier_phone||'',
+      Math.max((m.threshold*2)-m.quantity,1)
+    ])
+  ];
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `pharmaflow-reorder-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('CSV downloaded ✅', 'success');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — ANALYTICS
+// ══════════════════════════════════════════════════════════════════
+async function renderAnalytics() {
+  if (document.getElementById('analytics').classList.contains('active') || true) {
+    // KPIs
+    const now = new Date();
+    const month = now.getMonth();
+    const year  = now.getFullYear();
+    const addedThisMonth = medicines.filter(m => {
+      const d = new Date(m.created_at||'');
+      return d.getMonth()===month && d.getFullYear()===year;
+    }).length;
+
+    const dispensedThisMonth = stockMovements.filter(mv => {
+      const d = new Date(mv.created_at);
+      return mv.change_amount < 0 && d.getMonth()===month && d.getFullYear()===year;
+    }).reduce((s,mv) => s + Math.abs(mv.change_amount), 0);
+
+    // Most dispensed
+    const mdCount = {};
+    stockMovements.filter(mv => mv.change_amount < 0).forEach(mv => {
+      mdCount[mv.medicine_id] = (mdCount[mv.medicine_id]||0) + Math.abs(mv.change_amount);
+    });
+    let mostDispensed = '—';
+    if (Object.keys(mdCount).length) {
+      const topId = Object.entries(mdCount).sort((a,b)=>b[1]-a[1])[0][0];
+      const m = medicines.find(m=>m.id===topId);
+      mostDispensed = m ? m.name : '—';
+    }
+
+    const runningOut7 = medicines.filter(m => getDaysUntilExpiry(m.expiry_date) <= 7 && getDaysUntilExpiry(m.expiry_date) >= 0).length;
+
+    document.getElementById('aKpi1').textContent = addedThisMonth;
+    document.getElementById('aKpi2').textContent = dispensedThisMonth;
+    document.getElementById('aKpi3').textContent = mostDispensed;
+    document.getElementById('aKpi4').textContent = runningOut7;
+
+    // Charts
+    renderCatChart();
+    renderMovChart();
+    renderCatDistChart();
+    renderTopDispChart();
+  }
+}
+
+function clearChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+function renderCatChart() {
+  clearChart('catChart');
+  const cats = {};
+  medicines.forEach(m => {
+    if (!cats[m.category]) cats[m.category] = { qty:0, threshold:0 };
+    cats[m.category].qty       += m.quantity;
+    cats[m.category].threshold += m.threshold;
+  });
+  const labels = Object.keys(cats);
+  chartInstances['catChart'] = new Chart(document.getElementById('catChart').getContext('2d'), {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        { label:'Current Qty', data:labels.map(l=>cats[l].qty), backgroundColor:'#0d6e4f', borderRadius:4 },
+        { label:'Threshold',   data:labels.map(l=>cats[l].threshold), backgroundColor:'#d1fae5', borderRadius:4 }
+      ]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{font:{family:'Satoshi',size:11}}}},scales:{x:{ticks:{font:{family:'Satoshi'}}},y:{ticks:{font:{family:'Satoshi'}}}}}
+  });
+}
+
+function renderMovChart() {
+  clearChart('movChart');
+  // Build last 30 days
+  const days = 30;
+  const dayLabels = [], restockData = [], dispensedData = [];
+  for (let i = days-1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const ds = d.toISOString().slice(0,10);
+    dayLabels.push(i===0?'Today':i===1?'Yesterday':ds.slice(5));
+    const dayMoves = stockMovements.filter(mv => mv.created_at?.slice(0,10)===ds);
+    restockData.push(dayMoves.filter(mv=>mv.change_amount>0).reduce((s,mv)=>s+mv.change_amount,0));
+    dispensedData.push(dayMoves.filter(mv=>mv.change_amount<0).reduce((s,mv)=>s+Math.abs(mv.change_amount),0));
+  }
+  chartInstances['movChart'] = new Chart(document.getElementById('movChart').getContext('2d'), {
+    type:'line',
+    data:{
+      labels:dayLabels,
+      datasets:[
+        { label:'Restocked', data:restockData, borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,0.10)', tension:0.3, fill:true },
+        { label:'Dispensed', data:dispensedData, borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,0.10)', tension:0.3, fill:true }
+      ]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{font:{family:'Satoshi',size:11}}}},scales:{x:{ticks:{maxTicksLimit:8,font:{family:'Satoshi',size:10}}},y:{ticks:{font:{family:'Satoshi'}}}}}
+  });
+}
+
+function renderCatDistChart() {
+  clearChart('catDistChart');
+  const cats = {};
+  medicines.forEach(m => { cats[m.category] = (cats[m.category]||0)+1; });
+  const labels = Object.keys(cats);
+  const clrs = ['#0d6e4f','#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#6b7280','#ec4899'];
+  chartInstances['catDistChart'] = new Chart(document.getElementById('catDistChart').getContext('2d'), {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data:labels.map(l=>cats[l]), backgroundColor:clrs, borderWidth:0, hoverOffset:5 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{family:'Satoshi',size:11}}}} }
+  });
+}
+
+function renderTopDispChart() {
+  clearChart('topDispChart');
+  const mdCount = {};
+  stockMovements.filter(mv=>mv.change_amount<0).forEach(mv => {
+    mdCount[mv.medicine_id] = (mdCount[mv.medicine_id]||0)+Math.abs(mv.change_amount);
+  });
+  const sorted = Object.entries(mdCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const labels = sorted.map(([id]) => { const m=medicines.find(m=>m.id===id); return m?m.name:'Unknown'; });
+  const data   = sorted.map(([,v])=>v);
+
+  if (!labels.length) {
+    // No data yet
+    labels.push(...medicines.slice(0,5).map(m=>m.name));
+    data.push(...medicines.slice(0,5).map(()=>0));
+  }
+
+  chartInstances['topDispChart'] = new Chart(document.getElementById('topDispChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Units Dispensed', data, backgroundColor:'#3b82f6', borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{font:{family:'Satoshi'}}},y:{ticks:{font:{family:'Satoshi',size:11}}}}
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — MEDICINE CATEGORY NAV BAR
+// ══════════════════════════════════════════════════════════════════
+function renderMedicineNavBar() {
+  const nav = document.getElementById('medCatNav');
+  if (!nav) return;
+
+  // Count medicines per category
+  const catCounts = {};
+  medicines.forEach(m => {
+    const c = m.category || 'Other';
+    catCounts[c] = (catCounts[c] || 0) + 1;
+  });
+
+  const allCategories = Object.keys(catCounts).sort();
+  const total = medicines.length;
+
+  const pills = [
+    { key: '', label: 'All', count: total },
+    ...allCategories.map(c => ({ key: c, label: c, count: catCounts[c] }))
+  ];
+
+  nav.innerHTML = pills.map(p => `
+    <button class="cat-pill${activeMedCat === p.key ? ' active' : ''}"
+      onclick="setActiveMedCat('${p.key}')" aria-pressed="${activeMedCat === p.key}"
+      aria-label="Show ${p.label} medicines">
+      ${escHtml(p.label)}
+      <span class="cat-count">${p.count}</span>
+    </button>`).join('');
+}
+
+function setActiveMedCat(cat) {
+  activeMedCat = cat;
+  // Sync the dropdown filter
+  const dropdown = document.getElementById('catFilter');
+  if (dropdown) dropdown.value = cat;
+  renderMedicineNavBar();
+  renderInventoryTable();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER — SUPPLIERS (FULL CRUD)
+// ══════════════════════════════════════════════════════════════════
+function renderSuppliers() {
+  const search     = (document.getElementById('supSearchInput')?.value || '').toLowerCase();
+  const typeFilt   = document.getElementById('supTypeFilter')?.value || '';
+  const statusFilt = document.getElementById('supStatusFilter')?.value || '';
+
+  // Build medicines-per-supplier lookup from medicines array
+  const medsBySupplier = {};
+  medicines.forEach(m => {
+    if (m.supplier_name) {
+      if (!medsBySupplier[m.supplier_name]) medsBySupplier[m.supplier_name] = [];
+      medsBySupplier[m.supplier_name].push(m.name);
+    }
+  });
+
+  let list = suppliersData.filter(s => {
+    const matchSearch = !search || (s.name||'').toLowerCase().includes(search) ||
+      (s.phone||'').includes(search) || (s.address||'').toLowerCase().includes(search);
+    const matchType   = !typeFilt   || s.type === typeFilt;
+    const matchStatus = !statusFilt || s.status === statusFilt;
+    return matchSearch && matchType && matchStatus;
+  });
+
+  // Stats
+  const el = id => document.getElementById(id);
+  if (el('supStatTotal'))  el('supStatTotal').textContent  = suppliersData.length;
+  if (el('supStatActive')) el('supStatActive').textContent = suppliersData.filter(s => s.status === 'Active').length;
+  if (el('supStatMeds'))   el('supStatMeds').textContent   = Object.values(medsBySupplier).reduce((t, arr) => t + arr.length, 0);
+
+  const grid = document.getElementById('supplierGrid');
+  if (!grid) return;
+
+  if (!list.length) {
+    grid.innerHTML = `<div class="empty-state" style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:3rem;">
+      <i data-lucide="truck"></i>
+      <p>${suppliersData.length ? 'No suppliers match your filters.' : 'No suppliers yet.'}</p>
+      ${!suppliersData.length ? `<button class="btn btn-primary" onclick="openAddSupplierModal()"><i data-lucide="plus"></i> Add First Supplier</button>` : ''}
+    </div>`;
+    lucide.createIcons(); return;
+  }
+
+  grid.innerHTML = list.map(s => {
+    const waNum  = (s.whatsapp||s.phone||'').replace(/\D/g,'');
+    const meds   = medsBySupplier[s.name] || [];
+    const typeCls = (s.type||'wholesale').toLowerCase();
+    const isActive = s.status === 'Active';
+    return `<div class="supplier-mgmt-card">
+      <div class="sup-mgmt-left">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+          <div class="sup-mgmt-name">${escHtml(s.name)}</div>
+          <span class="sup-type-badge ${typeCls}">${escHtml(s.type||'Wholesale')}</span>
+          <span style="font-size:0.7rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:9999px;background:${isActive?'#d1fae5':'#f3f4f6'};color:${isActive?'#065f46':'#6b7280'};">
+            ${isActive ? '● Active' : '○ Inactive'}
+          </span>
+        </div>
+        <div class="sup-mgmt-contact">
+          ${s.phone   ? `<span>📞 ${escHtml(s.phone)}</span>` : ''}
+          ${s.whatsapp? `<span>💬 ${escHtml(s.whatsapp)}</span>` : ''}
+          ${s.email   ? `<span>✉️ ${escHtml(s.email)}</span>` : ''}
+          ${s.gst     ? `<span style="font-family:monospace;">GST: ${escHtml(s.gst)}</span>` : ''}
+        </div>
+        ${s.address ? `<div class="sup-mgmt-meta">📍 ${escHtml(s.address)}</div>` : ''}
+        ${s.notes   ? `<div class="sup-mgmt-meta" style="font-style:italic;">${escHtml(s.notes)}</div>` : ''}
+        ${meds.length ? `<div class="sup-mgmt-tags">${meds.map(m=>`<span class="sup-med-tag">${escHtml(m)}</span>`).join('')}</div>` : '<div class="sup-mgmt-meta" style="margin-top:0.25rem;">No medicines linked yet</div>'}
+      </div>
+      <div class="sup-mgmt-right">
+        ${s.phone ? `<a href="tel:${s.phone}" class="btn btn-outline btn-sm" aria-label="Call ${escHtml(s.name)}"><i data-lucide="phone"></i> Call</a>` : ''}
+        ${waNum   ? `<a href="https://wa.me/${waNum}" target="_blank" rel="noopener" class="btn btn-whatsapp btn-sm" aria-label="WhatsApp"><i data-lucide="message-circle"></i> WhatsApp</a>` : ''}
+        ${s.email ? `<a href="mailto:${s.email}" class="btn btn-outline btn-sm" aria-label="Email"><i data-lucide="mail"></i> Email</a>` : ''}
+        <div style="display:flex;gap:0.4rem;margin-top:0.25rem;">
+          <button class="btn-icon" onclick="editSupplier('${s.id}')" aria-label="Edit" title="Edit Supplier"><i data-lucide="edit-2"></i></button>
+          <button class="btn-icon danger" onclick="confirmDeleteSupplier('${s.id}')" aria-label="Delete" title="Delete Supplier"><i data-lucide="trash-2"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+// Supplier location
+document.getElementById('findNearMeBtn').addEventListener('click', () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => window.open(`https://www.google.com/maps/search/medical+wholesale+supplier/@${pos.coords.latitude},${pos.coords.longitude},14z`, '_blank'),
+      () => {
+        const cityInput = document.getElementById('cityInput');
+        if (cityInput) cityInput.focus();
+        showToast('Location denied. Enter your city below.', 'info');
+      }
+    );
+  } else {
+    showToast('Geolocation not supported. Enter your city.', 'info');
+    const cityInput = document.getElementById('cityInput');
+    if (cityInput) cityInput.focus();
+  }
+});
+document.getElementById('citySearchBtn').addEventListener('click', () => {
+  const city = document.getElementById('cityInput').value.trim();
+  const resultEl = document.getElementById('locationResult');
+  if (city) {
+    if (resultEl) resultEl.innerHTML = `<a href="https://www.google.com/maps/search/medical+supplier+${encodeURIComponent(city)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm"><i data-lucide="external-link"></i> View "${escHtml(city)}" on Google Maps</a>`;
+    window.open(`https://www.google.com/maps/search/medical+supplier+${encodeURIComponent(city)}`, '_blank');
+    lucide.createIcons();
+  } else {
+    showToast('Please enter a city name', 'error');
+  }
+});
+
+// Add Supplier button
+document.getElementById('addSupplierBtn').addEventListener('click', openAddSupplierModal);
+
+// Supplier search live
+document.getElementById('supSearchInput')?.addEventListener('input', renderSuppliers);
+
+function openAddSupplierModal() {
+  editingSupplierId = null;
+  document.getElementById('supModalTitle').textContent = 'Add Supplier';
+  document.getElementById('supplierForm').reset();
+  document.getElementById('fSupId').value = '';
+  openModal('supplierModalBd');
+}
+
+function editSupplier(id) {
+  const s = suppliersData.find(s => s.id === id);
+  if (!s) return;
+  editingSupplierId = id;
+  document.getElementById('supModalTitle').textContent = 'Edit Supplier';
+  document.getElementById('fSupId').value      = s.id;
+  document.getElementById('fSupName').value    = s.name || '';
+  document.getElementById('fSupType').value    = s.type || 'Wholesale';
+  document.getElementById('fSupStatus').value  = s.status || 'Active';
+  document.getElementById('fSupPhone').value   = s.phone || '';
+  document.getElementById('fSupWhatsApp').value= s.whatsapp || '';
+  document.getElementById('fSupEmail').value   = s.email || '';
+  document.getElementById('fSupGST').value     = s.gst || '';
+  document.getElementById('fSupAddress').value = s.address || '';
+  document.getElementById('fSupNotes').value   = s.notes || '';
+  openModal('supplierModalBd');
+}
+
+async function confirmDeleteSupplier(id) {
+  const s = suppliersData.find(s => s.id === id);
+  if (!s) return;
+  if (!confirm(`Delete supplier "${s.name}"?`)) return;
+  const ok = await dbDeleteSupplier(id);
+  if (ok) { showToast(`${s.name} removed ✅`, 'success'); await refreshAll(); }
+}
+
+document.getElementById('saveSupplierBtn').addEventListener('click', async () => {
+  const name = document.getElementById('fSupName').value.trim();
+  if (!name) {
+    document.getElementById('fSupName').classList.add('invalid');
+    document.getElementById('fSupNameErr').classList.add('show');
+    showToast('Supplier name is required', 'error'); return;
+  }
+  const payload = {
+    name,
+    type:      document.getElementById('fSupType').value,
+    status:    document.getElementById('fSupStatus').value,
+    phone:     document.getElementById('fSupPhone').value.trim() || null,
+    whatsapp:  document.getElementById('fSupWhatsApp').value.trim() || null,
+    email:     document.getElementById('fSupEmail').value.trim() || null,
+    gst:       document.getElementById('fSupGST').value.trim() || null,
+    address:   document.getElementById('fSupAddress').value.trim() || null,
+    notes:     document.getElementById('fSupNotes').value.trim() || null
+  };
+  const btn = document.getElementById('saveSupplierBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  if (editingSupplierId) {
+    await dbUpdateSupplier(editingSupplierId, payload);
+    showToast(`${name} updated ✅`, 'success');
+  } else {
+    await dbAddSupplier(payload);
+    showToast(`${name} added ✅`, 'success');
+  }
+  btn.disabled = false; btn.innerHTML = '<i data-lucide="save"></i> Save Supplier →';
+  closeModal('supplierModalBd');
+  await refreshAll();
+});
+
+// ══════════════════════════════════════════════════════════════════
+// BADGE UPDATES
+// ══════════════════════════════════════════════════════════════════
+function updateBadges() {
+  const alertCount   = medicines.filter(m => ['Critical','Expired','Low'].includes(m.status.label)).length;
+  const reorderCount = medicines.filter(m => m.quantity <= m.threshold || getDaysUntilExpiry(m.expiry_date) < 0).length;
+
+  const show = (id, count) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = count;
+    el.style.display = count > 0 ? 'inline-flex' : 'none';
+  };
+
+  show('invBadge',        alertCount);
+  show('mobInvBadge',     alertCount);
+  show('reorderBadge',    reorderCount);
+  show('mobReorderBadge', reorderCount);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MODAL — ADD/EDIT MEDICINE
+// ══════════════════════════════════════════════════════════════════
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  const first = document.querySelector(`#${id} input, #${id} select`);
+  if (first) setTimeout(() => first.focus(), 50);
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'medModalBd') {
+    document.getElementById('medForm').reset();
+    document.getElementById('chronicTagGroup').style.display = 'none';
+    editingMedId = null;
+    clearFormErrors();
+  }
+}
+
+// Close on backdrop click
+document.querySelectorAll('.modal-backdrop').forEach(bd => {
+  bd.addEventListener('click', e => { if (e.target === bd) closeModal(bd.id); });
+});
+
+function openAddMedModal() {
+  editingMedId = null;
+  document.getElementById('medModalTitle').textContent = 'Add Medicine';
+  document.getElementById('medForm').reset();
+  document.getElementById('chronicTagGroup').style.display = 'none';
+  clearFormErrors();
+  openModal('medModalBd');
+}
+
+function editMedicine(id) {
+  const m = medicines.find(m => m.id === id);
+  if (!m) return;
+  editingMedId = id;
+  document.getElementById('medModalTitle').textContent = 'Edit Medicine';
+  document.getElementById('fMedId').value         = m.id;
+  document.getElementById('fName').value          = m.name;
+  document.getElementById('fCategory').value      = m.category;
+  document.getElementById('fUnit').value          = m.unit;
+  document.getElementById('fQty').value           = m.quantity;
+  document.getElementById('fExpiry').value        = m.expiry_date;
+  document.getElementById('fThreshold').value     = m.threshold;
+  document.getElementById('fCritical').value      = m.critical_level;
+  document.getElementById('fBarcode').value       = m.barcode || '';
+  document.getElementById('fIsChronic').checked   = m.is_chronic_disease_med;
+  document.getElementById('fDiseaseTag').value    = m.chronic_disease_tag || 'Diabetes';
+  document.getElementById('chronicTagGroup').style.display = m.is_chronic_disease_med ? 'block' : 'none';
+  document.getElementById('fSupplierName').value  = m.supplier_name || '';
+  document.getElementById('fSupplierPhone').value = m.supplier_phone || '';
+  document.getElementById('fSupplierWA').value    = m.supplier_whatsapp || '';
+  clearFormErrors();
+  openModal('medModalBd');
+}
+
+document.getElementById('fIsChronic').addEventListener('change', e => {
+  document.getElementById('chronicTagGroup').style.display = e.target.checked ? 'block' : 'none';
+});
+
+function clearFormErrors() {
+  document.querySelectorAll('.form-err').forEach(e => e.classList.remove('show'));
+  document.querySelectorAll('.invalid').forEach(e => e.classList.remove('invalid'));
+}
+
+function validateForm() {
+  let ok = true;
+  const req = [
+    { id:'fName',     errId:'fNameErr' },
+    { id:'fCategory', errId:'fCategoryErr' },
+    { id:'fQty',      errId:'fQtyErr' },
+    { id:'fExpiry',   errId:'fExpiryErr' }
+  ];
+  req.forEach(({id, errId}) => {
+    const el = document.getElementById(id);
+    if (!el.value || (el.type==='number' && el.value==='')) {
+      el.classList.add('invalid');
+      document.getElementById(errId).classList.add('show');
+      ok = false;
+    } else {
+      el.classList.remove('invalid');
+      document.getElementById(errId).classList.remove('show');
+    }
+  });
+  return ok;
+}
+
+document.getElementById('saveMedBtn').addEventListener('click', async () => {
+  if (!validateForm()) { showToast('Please fill in all required fields', 'error'); return; }
+  const btn = document.getElementById('saveMedBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const isChronic = document.getElementById('fIsChronic').checked;
+  const payload = {
+    name:                  document.getElementById('fName').value.trim(),
+    category:              document.getElementById('fCategory').value,
+    unit:                  document.getElementById('fUnit').value,
+    quantity:              parseInt(document.getElementById('fQty').value),
+    expiry_date:           document.getElementById('fExpiry').value,
+    threshold:             parseInt(document.getElementById('fThreshold').value) || 10,
+    critical_level:        parseInt(document.getElementById('fCritical').value) || 5,
+    barcode:               document.getElementById('fBarcode').value.trim() || null,
+    is_chronic_disease_med: isChronic,
+    chronic_disease_tag:   isChronic ? document.getElementById('fDiseaseTag').value : null,
+    supplier_name:         document.getElementById('fSupplierName').value.trim() || null,
+    supplier_phone:        document.getElementById('fSupplierPhone').value.trim() || null,
+    supplier_whatsapp:     document.getElementById('fSupplierWA').value.trim() || null
+  };
+
+  if (editingMedId) {
+    await dbUpdateMedicine(editingMedId, payload);
+    showToast('Updated ✅', 'success');
+  } else {
+    await dbAddMedicine(payload);
+    showToast('Medicine added ✅', 'success');
+  }
+
+  btn.disabled = false; btn.innerHTML = '<i data-lucide="save"></i> Save Medicine →';
+  closeModal('medModalBd');
+  await refreshAll();
+});
+
+// ══════════════════════════════════════════════════════════════════
+// RESTOCK MODAL
+// ══════════════════════════════════════════════════════════════════
+function openRestockModal(id) {
+  restockMedId_ = id;
+  const m = medicines.find(m => m.id === id);
+  document.getElementById('restockMedName').textContent = m ? `Restocking: ${m.name} (current: ${m.quantity} ${m.unit})` : 'Restock Medicine';
+  document.getElementById('restockQtyInput').value = '';
+  openModal('restockModalBd');
+  document.getElementById('restockQtyInput').focus();
+}
+
+document.getElementById('confirmRestockBtn').addEventListener('click', async () => {
+  const qty = parseInt(document.getElementById('restockQtyInput').value);
+  if (!qty || qty <= 0) { showToast('Enter a valid quantity', 'error'); return; }
+  closeModal('restockModalBd');
+  await restockMedicine(restockMedId_, qty);
+});
+
+document.getElementById('restockQtyInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('confirmRestockBtn').click();
+});
+
+// ══════════════════════════════════════════════════════════════════
+// BARCODE SCANNER
+// ══════════════════════════════════════════════════════════════════
+const BarcodeAPI = window.BarcodeDetector;
+
+document.getElementById('scanBarcodeBtn').addEventListener('click', () => {
+  if (!BarcodeAPI) {
+    showToast('Barcode scanning requires Chrome 88+ on Android/desktop', 'info');
+    document.getElementById('barcodeHint').textContent = 'Barcode scanning requires Chrome 88+. Type barcode manually.';
+    return;
+  }
+  startCamera();
+});
+
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } });
+    document.getElementById('cameraVideo').srcObject = cameraStream;
+    document.getElementById('cameraOverlay').classList.add('active');
+    document.getElementById('cameraStatus').textContent = 'Scanning for barcode…';
+    lucide.createIcons();
+    startBarcodeDetection();
+  } catch (err) {
+    console.error(err);
+    showToast("Camera access denied. Type the barcode manually.", 'error');
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  if (barcodeInterval) { clearInterval(barcodeInterval); barcodeInterval = null; }
+  document.getElementById('cameraOverlay').classList.remove('active');
+}
+
+function startBarcodeDetection() {
+  const detector = new BarcodeAPI(['qr_code','ean_13','ean_8','code_128','code_39','upc_a','upc_e']);
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('cameraCanvas');
+
+  barcodeInterval = setInterval(async () => {
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video,0,0);
+    try {
+      const codes = await detector.detect(canvas);
+      if (codes.length) {
+        const code = codes[0].rawValue;
+        stopCamera();
+        document.getElementById('fBarcode').value = code;
+        // Check if medicine exists with this barcode
+        const existing = medicines.find(m => m.barcode === code);
+        if (existing) {
+          editMedicine(existing.id);
+          showToast(`Medicine found: ${existing.name} ✅`, 'success');
+        } else {
+          showToast(`Barcode scanned: ${code} — fill in medicine details`, 'info');
+        }
+      }
+    } catch(e) {}
+  }, 300);
+}
+
+document.getElementById('cameraCloseBtn').addEventListener('click', stopCamera);
+
+// ══════════════════════════════════════════════════════════════════
+// VOICE SEARCH
+// ══════════════════════════════════════════════════════════════════
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = document.getElementById('micBtn');
+
+if (!SR) {
+  micBtn.style.display = 'none';
+} else {
+  const recognition = new SR();
+  // Set to continuous so it doesn't timeout immediately with 'no-speech' if you take a second to speak
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  // Let the browser use its optimal default language instead of forcing en-IN
+  // recognition.lang = 'en-IN';
+  let listening = false;
+
+  micBtn.addEventListener('click', () => {
+    if (window.location.protocol === 'file:') {
+      showToast('⚠️ Voice search requires a live server (http://...) and does not work on local files (file://).', 'warning');
+      return;
+    }
+    if (listening) { 
+        try { recognition.stop(); } catch(e){} 
+        return; 
+    }
+    try {
+      recognition.start();
+    } catch(err) {
+      if (!err.message.includes('started')) showToast('Microphone start error: ' + err.message, 'error');
+    }
+  });
+
+  recognition.onstart = () => {
+    listening = true;
+    micBtn.classList.add('listening');
+    document.getElementById('voiceTranscript').textContent = '🎤 Listening…';
+  };
+  recognition.onresult = e => {
+    let text = Array.from(e.results).map(r=>r[0].transcript).join(' ').toLowerCase().trim();
+    // Strip trailing punctuation which breaks filtering
+    text = text.replace(/[.,!?]$/g, '').trim();
+    document.getElementById('voiceTranscript').textContent = `"${text}"`;
+    
+    // Process on final phrase
+    if (e.results[e.results.length - 1].isFinal) {
+      processVoiceCommand(text);
+      // Auto-stop after successfully processing a command
+      try { recognition.stop(); } catch(err){}
+    }
+  };
+  recognition.onend = () => {
+    listening = false;
+    micBtn.classList.remove('listening');
+    setTimeout(() => { document.getElementById('voiceTranscript').textContent = ''; }, 3000);
+  };
+  recognition.onerror = (e) => {
+    listening = false;
+    micBtn.classList.remove('listening');
+    document.getElementById('voiceTranscript').textContent = '';
+    
+    let msg = e.error;
+    if (e.error === 'not-allowed') msg = 'Microphone access denied. Please click the lock icon in your browser URL bar and choose "Allow".';
+    else if (e.error === 'no-speech') msg = 'No speech detected. Your mic may be muted or you need to select the correct microphone in Chrome settings (chrome://settings/content/microphone).';
+    else if (e.error === 'network') msg = 'Network error. Chrome voice search requires internet connectivity.';
+    
+    showToast('Voice Error: ' + msg, 'error');
+  };
+}
+
+function processVoiceCommand(text) {
+  const inp = document.getElementById('searchInput');
+  if (text.includes('show expired'))              { document.getElementById('statusFilter').value = 'Expired'; inp.value = ''; }
+  else if (text.includes('show critical'))        { document.getElementById('statusFilter').value = 'Critical'; inp.value = ''; }
+  else if (text.includes('show low'))             { document.getElementById('statusFilter').value = 'Low'; inp.value = ''; }
+  else if (text.includes('show diabetes'))        { document.getElementById('diseaseFilter').value = 'Diabetes'; inp.value = ''; }
+  else if (text.includes('show hypertension'))    { document.getElementById('diseaseFilter').value = 'Hypertension'; inp.value = ''; }
+  else if (text.includes('show asthma'))          { document.getElementById('diseaseFilter').value = 'Asthma'; inp.value = ''; }
+  else if (text.includes('show cardiac'))         { document.getElementById('diseaseFilter').value = 'Cardiac'; inp.value = ''; }
+  else                                             { inp.value = text; }
+  renderInventoryTable();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea, select')) return;
+  switch(e.key) {
+    case 'a': case 'A': openAddMedModal(); break;
+    case '/': e.preventDefault(); navigateTo('inventory'); document.getElementById('searchInput').focus(); break;
+    case 'r': case 'R': navigateTo('reorder'); break;
+    case 'd': case 'D': navigateTo('dashboard'); break;
+    case 'i': case 'I': navigateTo('inventory'); break;
+    case 'n': case 'N': navigateTo('analytics'); break;
+    case 's': case 'S': navigateTo('suppliers'); break;
+    case 'Escape': closeAllModals(); break;
+    case 'ArrowUp':   navigateTableRow(-1); break;
+    case 'ArrowDown': navigateTableRow(+1); break;
+  }
+});
+
+function closeAllModals() {
+  document.querySelectorAll('.modal-backdrop.open').forEach(bd => closeModal(bd.id));
+  stopCamera();
+}
+
+let focusedRowIdx = -1;
+function navigateTableRow(dir) {
+  const rows = Array.from(document.querySelectorAll('#inventoryBody tr[tabindex="0"]'));
+  if (!rows.length) return;
+  focusedRowIdx = Math.max(0, Math.min(rows.length-1, focusedRowIdx + dir));
+  rows.forEach(r => r.classList.remove('row-focused'));
+  rows[focusedRowIdx].classList.add('row-focused');
+  rows[focusedRowIdx].scrollIntoView({ block:'nearest' });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════════════════
+function navigateTo(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(pageId)?.classList.add('active');
+  document.querySelectorAll('.nav-btn, .mob-nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === pageId);
+  });
+  if (pageId === 'analytics') renderAnalytics();
+}
+
+document.querySelectorAll('[data-page]').forEach(btn => {
+  btn.addEventListener('click', () => navigateTo(btn.dataset.page));
+});
+
+// ══════════════════════════════════════════════════════════════════
+// SEARCH / FILTER
+// ══════════════════════════════════════════════════════════════════
+document.getElementById('searchInput').addEventListener('input', renderInventoryTable);
+
+// ── ADD MEDICINE BUTTON (inventory toolbar) ─────────────────────
+document.getElementById('addMedBtn').addEventListener('click', openAddMedModal);
+
+// ══════════════════════════════════════════════════════════════════
+// THEME TOGGLE
+// ══════════════════════════════════════════════════════════════════
+const html = document.documentElement;
+const toggleBtn = document.getElementById('themeToggle');
+
+function setTheme(t) {
+  html.setAttribute('data-theme', t);
+  toggleBtn.querySelector('i').setAttribute('data-lucide', t==='dark' ? 'sun' : 'moon');
+  lucide.createIcons();
+}
+
+// Auto-detect system theme
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+setTheme(prefersDark.matches ? 'dark' : 'light');
+prefersDark.addEventListener('change', e => setTheme(e.matches ? 'dark' : 'light'));
+
+toggleBtn.addEventListener('click', () => {
+  setTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// TOAST NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════════
+function showToast(msg, type='info') {
+  const container = document.getElementById('toastContainer');
+  const icons = { success:'✅', error:'❌', info:'ℹ️' };
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ️'}</span>
+    <span class="toast-msg">${escHtml(msg)}</span>
+    <button class="toast-close" onclick="this.parentElement.remove()" aria-label="Close notification"><i data-lucide="x"></i></button>`;
+  container.appendChild(toast);
+  lucide.createIcons();
+  // Max 3 visible
+  const all = container.querySelectorAll('.toast');
+  if (all.length > 3) all[0].remove();
+  // Auto-dismiss
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.style.animation = 'toastOut 0.3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 3500);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CONNECTIVITY
+// ══════════════════════════════════════════════════════════════════
+function updateConnBanner() {
+  const banner = document.getElementById('connBanner');
+  if (navigator.onLine) {
+    banner.className = 'online';
+    banner.textContent = MOCK ? '🟡 Demo Mode — data is stored in memory only' : '🟢 Live — synced with database';
+  } else {
+    banner.className = 'offline';
+    banner.textContent = '🟠 Offline — showing last loaded data. Changes will be queued.';
+  }
+}
+
+window.addEventListener('online', async () => {
+  updateConnBanner();
+  showToast(`🔄 Reconnected — syncing ${pendingWrites.length} queued changes…`, 'info');
+  for (const write of pendingWrites) {
+    try { await write(); } catch(e) { console.error(e); }
+  }
+  pendingWrites = [];
+  await refreshAll();
+  showToast('✅ All changes synced', 'success');
+});
+window.addEventListener('offline', () => {
+  updateConnBanner();
+  showToast('📴 Gone offline. Changes will be saved when reconnected.', 'info');
+});
+
+// ══════════════════════════════════════════════════════════════════
+// REAL-TIME SYNC
+// ══════════════════════════════════════════════════════════════════
+if (!MOCK && db) {
+  db.channel('medicines-live')
+    .on('postgres_changes', { event:'*', schema:'public', table:'medicines' }, () => refreshAll())
+    .subscribe();
+  db.channel('patients-live')
+    .on('postgres_changes', { event:'*', schema:'public', table:'patients' }, () => refreshAll())
+    .subscribe();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PATIENT PAGE RENDERING
+// ══════════════════════════════════════════════════════════════════
+const CONDITION_COLORS = {
+  'Diabetes': 'diabetes', 'Hypertension': 'hypertension',
+  'Asthma': 'asthma', 'Cardiac': 'cardiac', 'Arthritis': 'arthritis'
+};
+
+function renderPatientsPage() {
+  const search   = (document.getElementById('patSearchInput')?.value || '').toLowerCase();
+  const condFilt = document.getElementById('patConditionFilter')?.value || '';
+  const genFilt  = document.getElementById('patGenderFilter')?.value || '';
+
+  let filtered = patients.filter(p => {
+    const matchSearch = !search || (p.name||'').toLowerCase().includes(search) || (p.phone||'').includes(search);
+    const matchCond   = !condFilt || (p.chronic_conditions||'').includes(condFilt) || (condFilt==='General' && !p.chronic_conditions?.trim());
+    const matchGender = !genFilt  || p.gender === genFilt;
+    return matchSearch && matchCond && matchGender;
+  });
+
+  // Summary bar
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const dispThisMonth = patientDispensing.filter(d => d.dispensed_at?.slice(0,7)===thisMonth).length;
+  const avg = filtered.length ? (patientDispensing.filter(d => filtered.find(p=>p.id===d.patient_id)).length / filtered.length).toFixed(1) : '0';
+  const el = id => document.getElementById(id);
+  if (el('filteredPatCount')) el('filteredPatCount').textContent = filtered.length;
+  if (el('dispThisMonth'))    el('dispThisMonth').textContent    = dispThisMonth;
+  if (el('avgDispPerPatient'))el('avgDispPerPatient').textContent = avg;
+
+  const grid = document.getElementById('patientGrid');
+  if (!grid) return;
+
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:3rem;">
+      <i data-lucide="users"></i>
+      <p>No patients found. ${search||condFilt||genFilt ? 'Try clearing your filters.' : ''}</p>
+      ${!search&&!condFilt&&!genFilt ? `<button class="btn btn-primary" onclick="openAddPatientModal()"><i data-lucide="user-plus"></i> Register First Patient</button>` : ''}
+    </div>`;
+    lucide.createIcons(); return;
+  }
+
+  grid.innerHTML = filtered.map(p => {
+    const conds = (p.chronic_conditions||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const dispCount = patientDispensing.filter(d => d.patient_id === p.id).length;
+    const lastDisp  = patientDispensing.filter(d => d.patient_id === p.id).sort((a,b)=>new Date(b.dispensed_at)-new Date(a.dispensed_at))[0];
+    const initials = (p.name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+    const tagsHtml = conds.length
+      ? conds.map(c => `<span class="pat-tag ${CONDITION_COLORS[c]||'general'}">${escHtml(c)}</span>`).join('')
+      : `<span class="pat-tag general">General</span>`;
+
+    return `<div class="patient-card" tabindex="0" aria-label="Patient ${escHtml(p.name)}">
+      <span class="pat-visit-badge">${lastDisp ? timeAgo(lastDisp.dispensed_at) : 'No visits'}</span>
+      <div class="pat-header">
+        <div class="pat-avatar">${escHtml(initials)}</div>
+        <div>
+          <div class="pat-name">${escHtml(p.name)}</div>
+          <div class="pat-sub">📞 ${escHtml(p.phone||'—')} &nbsp;|&nbsp; ${p.age||'?'} yrs, ${p.gender||'—'} ${p.blood_group?'| '+p.blood_group:''}</div>
+        </div>
+      </div>
+      <div class="pat-tags">${tagsHtml}</div>
+      ${p.notes ? `<div style="font-size:0.78rem;color:var(--color-text-muted);font-style:italic;">${escHtml(p.notes)}</div>` : ''}
+      <div class="pat-stats">
+        <span>💊 <strong>${dispCount}</strong> dispense${dispCount!==1?'s':''}</span>
+        ${p.address ? `<span>📍 ${escHtml(p.address.split(',')[0])}</span>` : ''}
+      </div>
+      <div class="pat-actions">
+        <button class="btn btn-outline btn-sm" onclick="openDispenseForPatient('${p.id}')" aria-label="Dispense medicine to ${escHtml(p.name)}">
+          <i data-lucide="pill"></i> Dispense
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="showPatientHistory('${p.id}')" aria-label="View history for ${escHtml(p.name)}">
+          <i data-lucide="clock"></i> History
+        </button>
+        <button class="btn-icon" onclick="editPatient('${p.id}')" aria-label="Edit ${escHtml(p.name)}" title="Edit"><i data-lucide="edit-2"></i></button>
+        <button class="btn-icon danger" onclick="confirmDeletePatient('${p.id}')" aria-label="Delete ${escHtml(p.name)}" title="Delete"><i data-lucide="trash-2"></i></button>
+      </div>
+    </div>`;
+  }).join('');
+
+  lucide.createIcons();
+}
+
+function showPatientHistory(patientId) {
+  const patient  = patients.find(p => p.id === patientId);
+  const history  = patientDispensing.filter(d => d.patient_id === patientId)
+    .sort((a,b) => new Date(b.dispensed_at) - new Date(a.dispensed_at));
+  const panel = document.getElementById('patHistoryPanel');
+
+  if (panel.dataset.openFor === patientId && panel.style.display !== 'none') {
+    panel.style.display = 'none'; panel.dataset.openFor = ''; return;
+  }
+  panel.dataset.openFor = patientId;
+  panel.style.display = 'block';
+
+  panel.innerHTML = `
+    <div class="history-panel">
+      <div class="card-header" style="justify-content:space-between;">
+        <span class="section-title" style="margin:0;"><i data-lucide="clock"></i> Medicine History: ${escHtml(patient?.name||'')}</span>
+        <button class="btn-ghost" onclick="document.getElementById('patHistoryPanel').style.display='none'" aria-label="Close history"><i data-lucide="x"></i></button>
+      </div>
+      ${history.length === 0
+        ? `<div class="empty-state" style="padding:2rem;"><i data-lucide="clipboard"></i><p>No medicines dispensed yet for this patient.</p></div>`
+        : `<div style="overflow-x:auto;">
+          <table>
+            <thead><tr>
+              <th>Date &amp; Time</th><th>Medicine</th><th>Qty</th><th>Notes</th>
+            </tr></thead>
+            <tbody>${history.map(h => `
+              <tr>
+                <td style="white-space:nowrap;">${new Date(h.dispensed_at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+                <td style="font-weight:600;">${escHtml(h.medicine_name||'—')}</td>
+                <td>${h.quantity} ${h.unit||''}</td>
+                <td style="color:var(--color-text-muted);">${escHtml(h.notes||'—')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      }
+    </div>`;
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  lucide.createIcons();
+}
+
+function openDispenseForPatient(patientId) {
+  // Open the dispense modal pre-populated with patient
+  const patient = patients.find(p => p.id === patientId);
+  if (!patient) return;
+  dispenseMedId_ = null;
+  document.getElementById('dispenseModalTitle').textContent = `Dispense to ${patient.name}`;
+  document.getElementById('dispenseMedName').textContent = 'Select a medicine below';
+  document.getElementById('dispenseMedStock').textContent = '';
+  document.getElementById('dispQtyInput').value = 1;
+  document.getElementById('dispNotes').value = '';
+  // Populate patient dropdown and pre-select
+  populatePatientDropdown();
+  document.getElementById('dispPatientSel').value = patientId;
+  // Add medicine select
+  let medSelHtml = '<div class="form-group" style="margin-bottom:1rem;"><label for="dispMedSel">Medicine *</label><select id="dispMedSel" onchange="onDispMedChange(this.value)">';
+  medSelHtml += '<option value="">— Select medicine —</option>';
+  medicines.forEach(m => { medSelHtml += `<option value="${m.id}">${escHtml(m.name)} (${m.quantity} ${m.unit})</option>`; });
+  medSelHtml += '</select></div>';
+  // Insert before qty
+  const qtyGroup = document.getElementById('dispQtyInput').closest('.form-group');
+  const existing = document.getElementById('dispMedSelWrap');
+  if (!existing) {
+    const wrap = document.createElement('div');
+    wrap.id = 'dispMedSelWrap';
+    wrap.innerHTML = medSelHtml;
+    qtyGroup.parentElement.insertBefore(wrap, qtyGroup);
+  } else {
+    existing.innerHTML = medSelHtml;
+  }
+  openModal('dispenseModalBd');
+}
+
+window.onDispMedChange = function(medId) {
+  dispenseMedId_ = medId;
+  const m = medicines.find(m => m.id === medId);
+  if (!m) return;
+  document.getElementById('dispenseMedName').textContent = m.name;
+  document.getElementById('dispenseMedStock').textContent = `In stock: ${m.quantity} ${m.unit}`;
+  document.getElementById('dispQtyInput').max = m.quantity;
+};
+
+function openAddPatientModal() {
+  editingPatientId = null;
+  document.getElementById('patModalTitle').textContent = 'Register Patient';
+  document.getElementById('patientForm').reset();
+  document.querySelectorAll('.cond-check').forEach(cb => cb.checked = false);
+  document.getElementById('fPatId').value = '';
+  openModal('patientModalBd');
+}
+
+function editPatient(id) {
+  const p = patients.find(p => p.id === id);
+  if (!p) return;
+  editingPatientId = id;
+  document.getElementById('patModalTitle').textContent = 'Edit Patient';
+  document.getElementById('fPatId').value      = p.id;
+  document.getElementById('fPatName').value    = p.name;
+  document.getElementById('fPatPhone').value   = p.phone || '';
+  document.getElementById('fPatAge').value     = p.age || '';
+  document.getElementById('fPatGender').value  = p.gender || 'Male';
+  document.getElementById('fPatBloodGroup').value = p.blood_group || '';
+  document.getElementById('fPatAddress').value = p.address || '';
+  document.getElementById('fPatNotes').value   = p.notes || '';
+  const conds = (p.chronic_conditions||'').split(',').map(s=>s.trim()).filter(Boolean);
+  document.querySelectorAll('.cond-check').forEach(cb => { cb.checked = conds.includes(cb.value); });
+  openModal('patientModalBd');
+}
+
+async function confirmDeletePatient(id) {
+  const p = patients.find(p => p.id === id);
+  if (!p) return;
+  if (!confirm(`Delete patient "${p.name}"?\nAll their dispensing records will remain.`)) return;
+  const ok = await dbDeletePatient(id);
+  if (ok) { showToast(`${p.name} removed`, 'success'); await refreshAll(); }
+}
+
+function populatePatientDropdown() {
+  const sel = document.getElementById('dispPatientSel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— No patient / walk-in —</option>';
+  patients.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name + (p.phone ? ` (${p.phone})` : '');
+    sel.appendChild(opt);
+  });
+}
+
+// Save patient
+document.getElementById('savePatientBtn').addEventListener('click', async () => {
+  const name = document.getElementById('fPatName').value.trim();
+  if (!name) {
+    document.getElementById('fPatName').classList.add('invalid');
+    document.getElementById('fPatNameErr').classList.add('show');
+    showToast('Patient name is required', 'error'); return;
+  }
+  const conds = Array.from(document.querySelectorAll('.cond-check:checked')).map(cb=>cb.value).join(',');
+  const payload = {
+    name,
+    phone:               document.getElementById('fPatPhone').value.trim() || null,
+    age:                 parseInt(document.getElementById('fPatAge').value) || null,
+    gender:              document.getElementById('fPatGender').value,
+    blood_group:         document.getElementById('fPatBloodGroup').value || null,
+    address:             document.getElementById('fPatAddress').value.trim() || null,
+    chronic_conditions:  conds,
+    notes:               document.getElementById('fPatNotes').value.trim() || null
+  };
+  const btn = document.getElementById('savePatientBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  if (editingPatientId) {
+    await dbUpdatePatient(editingPatientId, payload);
+    showToast(`${name} updated ✅`, 'success');
+  } else {
+    await dbAddPatient(payload);
+    showToast(`${name} registered ✅`, 'success');
+  }
+  btn.disabled = false; btn.innerHTML = '<i data-lucide="save"></i> Save Patient →';
+  closeModal('patientModalBd');
+  await refreshAll();
+});
+
+// Add/Edit Patient button
+document.getElementById('addPatientBtn').addEventListener('click', openAddPatientModal);
+
+// Patient search live filter
+document.getElementById('patSearchInput')?.addEventListener('input', renderPatientsPage);
+
+// Export patients CSV
+document.getElementById('exportPatientsBtn')?.addEventListener('click', () => {
+  const rows = [['Name','Phone','Age','Gender','Blood Group','Conditions','Address','Notes','Total Dispensed'],
+    ...patients.map(p => [
+      p.name, p.phone||'', p.age||'', p.gender||'', p.blood_group||'',
+      p.chronic_conditions||'', p.address||'', p.notes||'',
+      patientDispensing.filter(d=>d.patient_id===p.id).length
+    ])
+  ];
+  const csv = rows.map(r => r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `pharmaflow-patients-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('Patients CSV exported ✅', 'success');
+});
+
+// Dispense modal from inventory table (quick dispense)
+function openDispenseModal(medId) {
+  dispenseMedId_ = medId;
+  const m = medicines.find(m => m.id === medId);
+  if (!m) return;
+  document.getElementById('dispenseModalTitle').textContent = 'Dispense Medicine';
+  document.getElementById('dispenseMedName').textContent = m.name;
+  document.getElementById('dispenseMedStock').textContent = `In stock: ${m.quantity} ${m.unit}`;
+  document.getElementById('dispQtyInput').value = 1;
+  document.getElementById('dispQtyInput').max   = m.quantity;
+  document.getElementById('dispNotes').value   = '';
+  // Remove medicine selector if present
+  const existing = document.getElementById('dispMedSelWrap');
+  if (existing) existing.remove();
+  populatePatientDropdown();
+  openModal('dispenseModalBd');
+}
+
+document.getElementById('confirmDispenseBtn').addEventListener('click', async () => {
+  const qty = parseInt(document.getElementById('dispQtyInput').value);
+  if (!qty || qty <= 0) { showToast('Enter a valid quantity', 'error'); return; }
+  // If opened from patient screen, get medId from dropdown
+  let medId = dispenseMedId_;
+  if (!medId) {
+    const sel = document.getElementById('dispMedSel');
+    medId = sel ? sel.value : null;
+  }
+  if (!medId) { showToast('Select a medicine to dispense', 'error'); return; }
+  const patientId = document.getElementById('dispPatientSel').value || null;
+  const notes     = document.getElementById('dispNotes').value.trim();
+  closeModal('dispenseModalBd');
+  await dispenseMedicine(medId, qty, patientId||null, notes||null);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// UTILITY
+// ══════════════════════════════════════════════════════════════════
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ══════════════════════════════════════════════════════════════════
+async function init() {
+  lucide.createIcons();
+  updateConnBanner();
+
+  if (MOCK) {
+    // Seed mock medicines
+    mockDB.medicines = SEED.map(m => ({
+      ...m,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }));
+    // Seed mock patients
+    mockDB.patients = SEED_PATIENTS.map(p => ({
+      ...p,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString()
+    }));
+    // Seed a few dispense records
+    const now = new Date();
+    if (mockDB.medicines.length && mockDB.patients.length) {
+      mockDB.medicines.slice(0,3).forEach((med, i) => {
+        const patient = mockDB.patients[i % mockDB.patients.length];
+        const dispAt  = new Date(now - (i * 3 + 1) * 3600000).toISOString();
+        mockDB.patient_dispensing.push({
+          id: crypto.randomUUID(),
+          patient_id: patient.id, medicine_id: med.id,
+          medicine_name: med.name, quantity: (i+1)*2, unit: med.unit,
+          dispensed_at: dispAt, notes: 'Seeded record'
+        });
+        mockDB.stock_movements.push({
+          id: crypto.randomUUID(),
+          medicine_id: med.id, change_amount: -((i+1)*2),
+          reason: 'dispensed', notes: 'Seeded', created_at: dispAt
+        });
+      });
+    }
+    // Seed mock suppliers
+    mockDB.suppliers = SEED_SUPPLIERS.map(s => ({
+      ...s,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString()
+    }));
+    showToast('Running in Demo Mode — Supabase not connected', 'info');
+  } else {
+    // Seed real DB if empty
+    try {
+      const { count } = await db.from('medicines').select('*', { count:'exact', head:true });
+      if (count === 0) {
+        await db.from('medicines').insert(SEED);
+        showToast('Sample medicines seeded ✅', 'success');
+      }
+      const { count: pc } = await db.from('patients').select('*', { count:'exact', head:true });
+      if (pc === 0) {
+        await db.from('patients').insert(SEED_PATIENTS);
+        showToast('Sample patients seeded ✅', 'success');
+      }
+      const { count: sc } = await db.from('suppliers').select('*', { count:'exact', head:true });
+      if (sc === 0) {
+        await db.from('suppliers').insert(SEED_SUPPLIERS);
+        showToast('Sample suppliers seeded ✅', 'success');
+      }
+    } catch(e) { console.error('Seed check failed:', e); }
+  }
+
+  await refreshAll();
+
+  // Show demo banner
+  if (MOCK) {
+    setTimeout(() => showToast('Demo mode: All changes are in-memory only', 'info'), 2000);
+  }
+}
+
+// Start
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

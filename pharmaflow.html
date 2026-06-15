@@ -9,6 +9,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <link rel="icon" href="data:,">
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
 
   <style>
@@ -1411,8 +1413,9 @@
       <div class="pstat-divider"></div>
       <div class="pstat"><div class="pstat-val" id="supStatMeds">–</div><div class="pstat-label">Medicines Supplied</div></div>
       <div style="margin-left:auto;display:flex;gap:0.75rem;align-items:center;">
-        <a href="https://pharmeasy.in" target="_blank" rel="noopener" class="btn btn-outline btn-sm">PharmEasy B2B ↗</a>
-        <a href="https://medlineind.com" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Medline ↗</a>
+        <a href="https://www.1mg.com" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Tata 1mg ↗</a>
+        <a href="https://www.apollopharmacy.in" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Apollo Pharmacy ↗</a>
+        <a href="https://www.netmeds.com" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Netmeds ↗</a>
       </div>
     </div>
 
@@ -1870,9 +1873,8 @@
 <!-- Camera Overlay for Barcode -->
 <div class="camera-overlay" id="cameraOverlay" aria-label="Barcode scanner">
   <button class="btn btn-danger camera-close" id="cameraCloseBtn" aria-label="Close camera"><i data-lucide="x"></i> Close Camera</button>
-  <video id="cameraVideo" autoplay playsinline></video>
+  <div id="qr-reader" style="width: 100%; max-width: 500px; background: #000; border-radius: var(--radius-lg); overflow: hidden;"></div>
   <p id="cameraStatus">Scanning for barcode…</p>
-  <canvas id="cameraCanvas" style="display:none;"></canvas>
 </div>
 
 <!-- Toast Container -->
@@ -1896,17 +1898,14 @@ const MOCK = SUPABASE_URL === 'YOUR_SUPABASE_PROJECT_URL';
 let db = null;
 if (!MOCK) { db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
 
-// Service Worker for offline
+// Unregister any stale Service Workers to ensure fresh content
 if ('serviceWorker' in navigator) {
-  const swCode = `
-    self.addEventListener('install', () => self.skipWaiting());
-    self.addEventListener('activate', e => e.waitUntil(clients.claim()));
-    self.addEventListener('fetch', e => {
-      e.respondWith(fetch(e.request).catch(() =>
-        new Response('<h2>PharmaFlow is offline</h2><p>Last loaded data is still available.</p>', {status:503,headers:{'Content-Type':'text/html'}})));
-    });`;
-  const blob = new Blob([swCode], { type: 'application/javascript' });
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+  });
+  if ('caches' in window) {
+    caches.keys().then(names => names.forEach(n => caches.delete(n)));
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -3232,63 +3231,57 @@ document.getElementById('restockQtyInput').addEventListener('keydown', e => {
 // ══════════════════════════════════════════════════════════════════
 // BARCODE SCANNER
 // ══════════════════════════════════════════════════════════════════
-const BarcodeAPI = window.BarcodeDetector;
+let html5QrcodeScanner = null;
 
 document.getElementById('scanBarcodeBtn').addEventListener('click', () => {
-  if (!BarcodeAPI) {
-    showToast('Barcode scanning requires Chrome 88+ on Android/desktop', 'info');
-    document.getElementById('barcodeHint').textContent = 'Barcode scanning requires Chrome 88+. Type barcode manually.';
-    return;
+  document.getElementById('cameraOverlay').classList.add('active');
+  document.getElementById('cameraStatus').style.display = 'none'; // Let the scanner handle the UI text
+  
+  if (!html5QrcodeScanner) {
+    html5QrcodeScanner = new Html5QrcodeScanner(
+      "qr-reader", 
+      { 
+        fps: 15, 
+        // Removes restrictive square scanning box - scans entire video frame!
+        videoConstraints: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          advanced: [{ focusMode: "continuous" }]
+        },
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true // Uses fast native OS scanner if available
+        }
+      }, 
+      false
+    );
   }
-  startCamera();
+  
+  html5QrcodeScanner.render(
+    (decodedText) => {
+      stopCamera();
+      document.getElementById('fBarcode').value = decodedText;
+      const existing = medicines.find(m => m.barcode === decodedText);
+      if (existing) {
+        editMedicine(existing.id);
+        showToast(`Medicine found: ${existing.name} ✅`, 'success');
+      } else {
+        showToast(`Barcode scanned: ${decodedText} — fill in details`, 'info');
+      }
+    },
+    (errorMessage) => {
+      // Ignored
+    }
+  );
 });
 
-async function startCamera() {
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } });
-    document.getElementById('cameraVideo').srcObject = cameraStream;
-    document.getElementById('cameraOverlay').classList.add('active');
-    document.getElementById('cameraStatus').textContent = 'Scanning for barcode…';
-    lucide.createIcons();
-    startBarcodeDetection();
-  } catch (err) {
-    console.error(err);
-    showToast("Camera access denied. Type the barcode manually.", 'error');
-  }
-}
-
 function stopCamera() {
-  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
-  if (barcodeInterval) { clearInterval(barcodeInterval); barcodeInterval = null; }
   document.getElementById('cameraOverlay').classList.remove('active');
-}
-
-function startBarcodeDetection() {
-  const detector = new BarcodeAPI(['qr_code','ean_13','ean_8','code_128','code_39','upc_a','upc_e']);
-  const video = document.getElementById('cameraVideo');
-  const canvas = document.getElementById('cameraCanvas');
-
-  barcodeInterval = setInterval(async () => {
-    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video,0,0);
+  if (html5QrcodeScanner) {
     try {
-      const codes = await detector.detect(canvas);
-      if (codes.length) {
-        const code = codes[0].rawValue;
-        stopCamera();
-        document.getElementById('fBarcode').value = code;
-        // Check if medicine exists with this barcode
-        const existing = medicines.find(m => m.barcode === code);
-        if (existing) {
-          editMedicine(existing.id);
-          showToast(`Medicine found: ${existing.name} ✅`, 'success');
-        } else {
-          showToast(`Barcode scanned: ${code} — fill in medicine details`, 'info');
-        }
-      }
+      html5QrcodeScanner.clear();
+      html5QrcodeScanner = null; // Reset completely to clear the UI from the div
     } catch(e) {}
-  }, 300);
+  }
 }
 
 document.getElementById('cameraCloseBtn').addEventListener('click', stopCamera);
@@ -3442,7 +3435,10 @@ const toggleBtn = document.getElementById('themeToggle');
 
 function setTheme(t) {
   html.setAttribute('data-theme', t);
-  toggleBtn.querySelector('i').setAttribute('data-lucide', t==='dark' ? 'sun' : 'moon');
+  if (toggleBtn) {
+    const icon = toggleBtn.querySelector('i');
+    if (icon) icon.setAttribute('data-lucide', t==='dark' ? 'sun' : 'moon');
+  }
   lucide.createIcons();
 }
 
@@ -3451,9 +3447,11 @@ const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 setTheme(prefersDark.matches ? 'dark' : 'light');
 prefersDark.addEventListener('change', e => setTheme(e.matches ? 'dark' : 'light'));
 
-toggleBtn.addEventListener('click', () => {
-  setTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-});
+if (toggleBtn) {
+  toggleBtn.addEventListener('click', () => {
+    setTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+}
 
 // ══════════════════════════════════════════════════════════════════
 // TOAST NOTIFICATIONS
